@@ -6,6 +6,30 @@ import { IDatabaseAdapter } from './types';
 let sqliteConnection: SQLiteConnection | null = null;
 let dbInstance: SQLiteDBConnection | null = null;
 let dbPromise: Promise<SQLiteDBConnection> | null = null;
+let isWebStoreInitialized = false;
+
+async function initWebStoreIfNeeded(): Promise<void> {
+  if (isWebStoreInitialized) return;
+  if (!sqliteConnection) {
+    sqliteConnection = new SQLiteConnection(CapacitorSQLite);
+  }
+  let jeepEl = document.querySelector('jeep-sqlite');
+  if (!jeepEl) {
+    jeepEl = document.createElement('jeep-sqlite');
+    document.body.appendChild(jeepEl);
+  }
+  await customElements.whenDefined('jeep-sqlite');
+  try {
+    // Timeout guard so initWebStore never hangs indefinitely
+    await Promise.race([
+      sqliteConnection.initWebStore(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('initWebStore timeout')), 2500))
+    ]);
+  } catch (e) {
+    console.warn('[Capacitor SQLite] initWebStore skipped or timed out:', e);
+  }
+  isWebStoreInitialized = true;
+}
 
 async function ensureDb(): Promise<SQLiteDBConnection> {
   if (dbInstance) {
@@ -35,13 +59,7 @@ async function ensureDb(): Promise<SQLiteDBConnection> {
 
       const platform = Capacitor.getPlatform();
       if (platform === 'web') {
-        let jeepEl = document.querySelector('jeep-sqlite');
-        if (!jeepEl) {
-          jeepEl = document.createElement('jeep-sqlite');
-          document.body.appendChild(jeepEl);
-        }
-        await customElements.whenDefined('jeep-sqlite');
-        await sqliteConnection.initWebStore();
+        await initWebStoreIfNeeded();
       }
 
       const isConn = await sqliteConnection.isConnection('study_tracker', false);
@@ -71,8 +89,12 @@ async function ensureDb(): Promise<SQLiteDBConnection> {
         }
       }
 
-      if (platform === 'web') {
-        await sqliteConnection.saveToStore('study_tracker');
+      if (platform === 'web' && sqliteConnection) {
+        try {
+          await sqliteConnection.saveToStore('study_tracker');
+        } catch (e) {
+          console.warn('[Capacitor SQLite] Initial saveToStore warning:', e);
+        }
       }
 
       console.log('[Capacitor SQLite] Database initialized successfully.');
