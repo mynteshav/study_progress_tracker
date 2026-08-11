@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { db } from '../db';
+import { authHelper } from '../utils/auth';
 import { User } from '../App';
 
 interface AuthProps {
@@ -33,9 +34,7 @@ function Auth({ setUser, showToast }: AuthProps) {
           return;
         }
 
-        const isValid = window.electronAPI
-          ? await window.electronAPI.bcryptCompare(password, userRecord.password_hash)
-          : (password === userRecord.password_hash);
+        const isValid = await authHelper.comparePassword(password, userRecord.password_hash);
 
         if (!isValid) {
           showToast('Invalid email or password.', 'error');
@@ -64,9 +63,7 @@ function Auth({ setUser, showToast }: AuthProps) {
           return;
         }
 
-        const hash = window.electronAPI
-          ? await window.electronAPI.bcryptHash(password)
-          : password;
+        const hash = await authHelper.hashPassword(password);
 
         const result = await db.createUser(name, email, hash);
         

@@ -270,6 +270,92 @@ const initDb = () => {
         )
       `);
 
+      // Roadmaps
+      db.run(`
+        CREATE TABLE IF NOT EXISTS roadmaps (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT,
+          target_role TEXT,
+          status TEXT CHECK(status IN ('active', 'paused', 'completed', 'draft')) DEFAULT 'active',
+          difficulty TEXT CHECK(difficulty IN ('Beginner', 'Intermediate', 'Advanced', 'Expert')) DEFAULT 'Intermediate',
+          duration TEXT,
+          is_active INTEGER CHECK(is_active IN (0, 1)) DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+
+      // Roadmap Sections
+      db.run(`
+        CREATE TABLE IF NOT EXISTS roadmap_sections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          roadmap_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          order_index INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (roadmap_id) REFERENCES roadmaps(id) ON DELETE CASCADE
+        )
+      `);
+
+      // Roadmap Topics
+      db.run(`
+        CREATE TABLE IF NOT EXISTS roadmap_topics (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          section_id INTEGER NOT NULL,
+          roadmap_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          status TEXT CHECK(status IN ('not started', 'in progress', 'completed')) DEFAULT 'not started',
+          difficulty TEXT CHECK(difficulty IN ('Beginner', 'Intermediate', 'Advanced')) DEFAULT 'Intermediate',
+          priority TEXT CHECK(priority IN ('low', 'medium', 'high', 'med')) DEFAULT 'medium',
+          estimated_hours REAL DEFAULT 0,
+          completed_hours REAL DEFAULT 0,
+          completion_date TEXT,
+          notes TEXT,
+          linked_project_id INTEGER,
+          linked_note_id INTEGER,
+          next_revision_date TEXT,
+          revision_count INTEGER DEFAULT 0,
+          order_index INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (section_id) REFERENCES roadmap_sections(id) ON DELETE CASCADE,
+          FOREIGN KEY (roadmap_id) REFERENCES roadmaps(id) ON DELETE CASCADE,
+          FOREIGN KEY (linked_project_id) REFERENCES projects(id) ON DELETE SET NULL,
+          FOREIGN KEY (linked_note_id) REFERENCES notes(id) ON DELETE SET NULL
+        )
+      `);
+
+      // Roadmap Resources
+      db.run(`
+        CREATE TABLE IF NOT EXISTS roadmap_resources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          topic_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          url TEXT,
+          type TEXT CHECK(type IN ('YouTube', 'Course', 'Documentation', 'GitHub', 'Blog', 'PDF', 'Book')) DEFAULT 'Documentation',
+          duration TEXT,
+          completed INTEGER CHECK(completed IN (0, 1)) DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (topic_id) REFERENCES roadmap_topics(id) ON DELETE CASCADE
+        )
+      `);
+
+      // Roadmap Checklists
+      db.run(`
+        CREATE TABLE IF NOT EXISTS roadmap_checklists (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          topic_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          completed INTEGER CHECK(completed IN (0, 1)) DEFAULT 0,
+          order_index INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (topic_id) REFERENCES roadmap_topics(id) ON DELETE CASCADE
+        )
+      `);
+
       // Indexes for performance
       db.run('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
       db.run('CREATE INDEX IF NOT EXISTS idx_topics_user_date ON topics(user_id, date)');
@@ -280,7 +366,14 @@ const initDb = () => {
       db.run('CREATE INDEX IF NOT EXISTS idx_habits_user ON habits(user_id)');
       db.run('CREATE INDEX IF NOT EXISTS idx_habit_logs_date ON habit_logs(date)');
       db.run('CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)');
-      db.run('CREATE INDEX IF NOT EXISTS idx_flashcards_deck_review ON flashcards(deck_id, next_review_date)', (err) => {
+      db.run('CREATE INDEX IF NOT EXISTS idx_flashcards_deck_review ON flashcards(deck_id, next_review_date)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_roadmaps_user ON roadmaps(user_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_roadmap_sections_roadmap ON roadmap_sections(roadmap_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_roadmap_topics_section ON roadmap_topics(section_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_roadmap_topics_roadmap ON roadmap_topics(roadmap_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_roadmap_topics_revision ON roadmap_topics(next_revision_date)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_roadmap_resources_topic ON roadmap_resources(topic_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_roadmap_checklists_topic ON roadmap_checklists(topic_id)', (err) => {
         if (err) {
           console.error('Database initialization error:', err);
           reject(err);

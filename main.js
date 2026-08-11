@@ -45,6 +45,11 @@ if (!gotTheLock) {
   app.exit(0);
 }
 
+// Set AppUserModelId for Windows Taskbar icon grouping
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.studytracker.app');
+}
+
 let mainWindow = null;
 let db = null;
 
@@ -305,6 +310,92 @@ function createDatabaseSchema() {
       )
     `);
 
+    // Roadmaps
+    runSchemaQuery(`
+      CREATE TABLE IF NOT EXISTS roadmaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        target_role TEXT,
+        status TEXT CHECK(status IN ('active', 'paused', 'completed', 'draft')) DEFAULT 'active',
+        difficulty TEXT CHECK(difficulty IN ('Beginner', 'Intermediate', 'Advanced', 'Expert')) DEFAULT 'Intermediate',
+        duration TEXT,
+        is_active INTEGER CHECK(is_active IN (0, 1)) DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Roadmap Sections
+    runSchemaQuery(`
+      CREATE TABLE IF NOT EXISTS roadmap_sections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        roadmap_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        order_index INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (roadmap_id) REFERENCES roadmaps(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Roadmap Topics
+    runSchemaQuery(`
+      CREATE TABLE IF NOT EXISTS roadmap_topics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id INTEGER NOT NULL,
+        roadmap_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        status TEXT CHECK(status IN ('not started', 'in progress', 'completed')) DEFAULT 'not started',
+        difficulty TEXT CHECK(difficulty IN ('Beginner', 'Intermediate', 'Advanced')) DEFAULT 'Intermediate',
+        priority TEXT CHECK(priority IN ('low', 'medium', 'high', 'med')) DEFAULT 'medium',
+        estimated_hours REAL DEFAULT 0,
+        completed_hours REAL DEFAULT 0,
+        completion_date TEXT,
+        notes TEXT,
+        linked_project_id INTEGER,
+        linked_note_id INTEGER,
+        next_revision_date TEXT,
+        revision_count INTEGER DEFAULT 0,
+        order_index INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (section_id) REFERENCES roadmap_sections(id) ON DELETE CASCADE,
+        FOREIGN KEY (roadmap_id) REFERENCES roadmaps(id) ON DELETE CASCADE,
+        FOREIGN KEY (linked_project_id) REFERENCES projects(id) ON DELETE SET NULL,
+        FOREIGN KEY (linked_note_id) REFERENCES notes(id) ON DELETE SET NULL
+      )
+    `);
+
+    // Roadmap Resources
+    runSchemaQuery(`
+      CREATE TABLE IF NOT EXISTS roadmap_resources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        url TEXT,
+        type TEXT CHECK(type IN ('YouTube', 'Course', 'Documentation', 'GitHub', 'Blog', 'PDF', 'Book')) DEFAULT 'Documentation',
+        duration TEXT,
+        completed INTEGER CHECK(completed IN (0, 1)) DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (topic_id) REFERENCES roadmap_topics(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Roadmap Checklists
+    runSchemaQuery(`
+      CREATE TABLE IF NOT EXISTS roadmap_checklists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        completed INTEGER CHECK(completed IN (0, 1)) DEFAULT 0,
+        order_index INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (topic_id) REFERENCES roadmap_topics(id) ON DELETE CASCADE
+      )
+    `);
+
     // Indexes for speed optimization
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_topics_user_date ON topics(user_id, date)');
@@ -316,6 +407,13 @@ function createDatabaseSchema() {
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_habit_logs_date ON habit_logs(date)');
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)');
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_flashcards_deck_review ON flashcards(deck_id, next_review_date)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_roadmaps_user ON roadmaps(user_id)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_roadmap_sections_roadmap ON roadmap_sections(roadmap_id)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_roadmap_topics_section ON roadmap_topics(section_id)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_roadmap_topics_roadmap ON roadmap_topics(roadmap_id)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_roadmap_topics_revision ON roadmap_topics(next_revision_date)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_roadmap_resources_topic ON roadmap_resources(topic_id)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_roadmap_checklists_topic ON roadmap_checklists(topic_id)');
     
     logToFile('SQLite database schema and indexes initialized.');
   });
@@ -375,6 +473,12 @@ function createWindow() {
     }
   }
 
+  const icoIconPath = path.join(__dirname, 'build', 'icon.ico');
+  const pngIconPath = path.join(__dirname, 'build', 'icon.png');
+  const windowIcon = process.platform === 'win32'
+    ? (fs.existsSync(icoIconPath) ? icoIconPath : (fs.existsSync(pngIconPath) ? pngIconPath : undefined))
+    : (fs.existsSync(pngIconPath) ? pngIconPath : undefined);
+
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
@@ -383,6 +487,7 @@ function createWindow() {
     minWidth: 1200,
     minHeight: 700,
     title: 'Study Tracker',
+    icon: windowIcon,
     backgroundColor: '#070913',
     show: false,
     webPreferences: {

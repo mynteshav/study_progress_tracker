@@ -67,3 +67,6 @@ desktop.ini
 .vite/
 .eslintcache
 .cache/
+
+# Backups
+backup_phase1/

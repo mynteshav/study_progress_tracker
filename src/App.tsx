@@ -10,6 +10,8 @@ import Timetable from './components/Timetable';
 import Habits from './components/Habits';
 import NotesCards from './components/NotesCards';
 import Analytics from './components/Analytics';
+import Roadmap from './components/Roadmap';
+import { Map } from 'lucide-react';
 import { TimerService } from './services/TimerService';
 
 export interface User {
@@ -67,6 +69,13 @@ function App() {
       TimerService.init(user.id, (msg, type) => {
         showToast(msg, type);
       });
+
+      // Check due roadmap revisions
+      db.getDueRevisions(user.id).then((due: any[]) => {
+        if (due && due.length > 0) {
+          showToast(`You have ${due.length} roadmap topic revision(s) due!`, 'warning');
+        }
+      }).catch(console.error);
     } else {
       TimerService.cleanup();
     }
@@ -171,6 +180,8 @@ function App() {
         return <Habits user={user} showToast={showToast} />;
       case 'notes':
         return <NotesCards user={user} showToast={showToast} />;
+      case 'roadmap':
+        return <Roadmap user={user} navigate={setActiveSection} showToast={showToast} />;
       case 'analytics':
         return <Analytics user={user} showToast={showToast} />;
       default:
@@ -230,19 +241,24 @@ function App() {
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
             { id: 'topics', label: "Today's Topics", icon: 'fa-list-check' },
             { id: 'timer', label: 'Focus Timer', icon: 'fa-stopwatch' },
-            { id: 'dsa', label: 'DSA Practice', icon: 'fa-code' },
+            { id: 'dsa', label: 'Coding Problems', icon: 'fa-code' },
             { id: 'projects', label: 'Projects', icon: 'fa-diagram-project' },
-            { id: 'timetable', label: 'Lane Timetable', icon: 'fa-calendar-days' },
-            { id: 'habits', label: 'Habits & Streaks', icon: 'fa-repeat' },
-            { id: 'notes', label: 'Notes & Cards', icon: 'fa-book-open' },
-            { id: 'analytics', label: 'Analytics', icon: 'fa-chart-line' }
+            { id: 'timetable', label: 'Timetable', icon: 'fa-calendar-days' },
+            { id: 'habits', label: 'Habits', icon: 'fa-repeat' },
+            { id: 'notes', label: 'Notes', icon: 'fa-book-open' },
+            { id: 'roadmap', label: 'Roadmap', isLucide: true },
+            { id: 'analytics', label: 'Statistics', icon: 'fa-chart-line' }
           ].map(item => (
             <div
               key={item.id}
               className={`menu-item ${activeSection === item.id ? 'active' : ''}`}
               onClick={() => setActiveSection(item.id)}
             >
-              <i className={`fa-solid ${item.icon}`}></i>
+              {item.isLucide ? (
+                <Map size={18} style={{ marginRight: '8px' }} />
+              ) : (
+                <i className={`fa-solid ${item.icon}`}></i>
+              )}
               <span>{item.label}</span>
             </div>
           ))}

@@ -16,6 +16,8 @@ function Dashboard({ user, navigate, showToast }: DashboardProps) {
   const [topics, setTopics] = useState<any[]>([]);
   const [upcoming, setUpcoming] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
+  const [activeRoadmap, setActiveRoadmap] = useState<any | null>(null);
+  const [roadmapTopics, setRoadmapTopics] = useState<any[]>([]);
   
   const chartRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstance = useRef<Chart | null>(null);
@@ -31,14 +33,23 @@ function Dashboard({ user, navigate, showToast }: DashboardProps) {
     const todayStr = getLocalDateStr();
     
     try {
-      const [allTopics, allSessions, allTimetable] = await Promise.all([
+      const [allTopics, allSessions, allTimetable, currentRoadmap] = await Promise.all([
         db.getTopics(user.id, todayStr),
         db.getFocusSessions(user.id),
-        db.getTimetableBlocks(user.id)
+        db.getTimetableBlocks(user.id),
+        db.getActiveRoadmap(user.id)
       ]);
 
       setTopics(allTopics);
       setSessions(allSessions);
+      setActiveRoadmap(currentRoadmap);
+
+      if (currentRoadmap) {
+        const rTops = await db.getRoadmapTopics(currentRoadmap.id);
+        setRoadmapTopics(rTops);
+      } else {
+        setRoadmapTopics([]);
+      }
 
       // 1. Calculate focused minutes today
       const todaySessions = allSessions.filter(s => {
@@ -283,6 +294,68 @@ function Dashboard({ user, navigate, showToast }: DashboardProps) {
 
       {/* Right Column: Schedule & Checklist */}
       <div className="dashboard-right">
+        {/* Roadmap Progress Widget */}
+        <div className="glass-panel" style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h2 className="dashboard-title" style={{ margin: 0 }}>Roadmap Progress</h2>
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigate('roadmap')}
+              style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+            >
+              Open Roadmap <i className="fa-solid fa-arrow-right" style={{ marginLeft: '4px' }}></i>
+            </button>
+          </div>
+
+          {activeRoadmap ? (
+            (() => {
+              const completedCount = roadmapTopics.filter(t => t.status === 'completed').length;
+              const totalCount = roadmapTopics.length;
+              const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+              const currentTopic = roadmapTopics.find(t => t.status === 'in progress');
+              const nextTopic = roadmapTopics.find(t => t.status === 'not started');
+              const remainingCount = totalCount - completedCount;
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, color: '#f8fafc' }}>{activeRoadmap.title}</span>
+                    <span style={{ fontSize: '0.85rem', color: '#818cf8', fontWeight: 600 }}>{progressPct}%</span>
+                  </div>
+
+                  <div style={{ height: '8px', backgroundColor: '#334155', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ width: `${progressPct}%`, height: '100%', backgroundColor: '#6366f1', transition: 'width 0.3s ease' }}></div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px', fontSize: '0.8rem' }}>
+                    <div style={{ background: 'rgba(15,23,42,0.5)', padding: '8px', borderRadius: '6px' }}>
+                      <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.7rem' }}>Current Topic</span>
+                      <span style={{ color: '#60a5fa', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                        {currentTopic ? currentTopic.name : 'None in progress'}
+                      </span>
+                    </div>
+                    <div style={{ background: 'rgba(15,23,42,0.5)', padding: '8px', borderRadius: '6px' }}>
+                      <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.7rem' }}>Next Topic</span>
+                      <span style={{ color: '#cbd5e1', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                        {nextTopic ? nextTopic.name : 'All completed! 🎉'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                    <span>{remainingCount} topics remaining</span>
+                    <span>Target: {activeRoadmap.target_role || 'Mastery'}</span>
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div style={{ textAlign: 'center', padding: '1rem', color: '#64748b', fontSize: '0.85rem' }}>
+              No active roadmap. <a onClick={() => navigate('roadmap')} style={{ color: '#818cf8', cursor: 'pointer' }}>Create or select one</a>.
+            </div>
+          )}
+        </div>
+
         {/* Timetable Blocks */}
         <div className="glass-panel" style={{ marginBottom: '24px', minHeight: '220px' }}>
           <h2 className="dashboard-title">Upcoming Schedule</h2>

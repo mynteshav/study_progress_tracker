@@ -273,6 +273,11 @@ async function handleTimerEnd() {
         state.appliedSavedTime > 0 ? 1 : 0,
         state.subjectText
       );
+
+      if (state.currentTopicId) {
+        db.incrementTopicCompletedHours(Number(state.currentTopicId), schedDuration / 60).catch(console.error);
+      }
+
       triggerSessionLogged();
       if (showToastCb) {
         showToastCb(`${schedDuration} minutes added to today's study time.`, 'success');
