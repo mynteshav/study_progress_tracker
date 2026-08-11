@@ -13,20 +13,19 @@ async function initWebStoreIfNeeded(): Promise<void> {
   if (!sqliteConnection) {
     sqliteConnection = new SQLiteConnection(CapacitorSQLite);
   }
-  let jeepEl = document.querySelector('jeep-sqlite');
+  let jeepEl = document.querySelector('jeep-sqlite') as any;
   if (!jeepEl) {
     jeepEl = document.createElement('jeep-sqlite');
     document.body.appendChild(jeepEl);
   }
   await customElements.whenDefined('jeep-sqlite');
+  if (jeepEl && typeof jeepEl.componentOnReady === 'function') {
+    await jeepEl.componentOnReady();
+  }
   try {
-    // Timeout guard so initWebStore never hangs indefinitely
-    await Promise.race([
-      sqliteConnection.initWebStore(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('initWebStore timeout')), 2500))
-    ]);
+    await sqliteConnection.initWebStore();
   } catch (e) {
-    console.warn('[Capacitor SQLite] initWebStore skipped or timed out:', e);
+    console.warn('[Capacitor SQLite] initWebStore notice:', e);
   }
   isWebStoreInitialized = true;
 }
@@ -122,7 +121,7 @@ export const capacitorAdapter: IDatabaseAdapter = {
       return res.values || [];
     } catch (err: any) {
       const errMsg = String(err?.message || err);
-      if (errMsg.includes('not opened')) {
+      if (errMsg.includes('not open') || errMsg.includes('not opened')) {
         console.warn('[Capacitor SQLite] DB not opened error detected, attempting to re-open...');
         dbInstance = null;
         dbPromise = null;
@@ -147,7 +146,7 @@ export const capacitorAdapter: IDatabaseAdapter = {
       return { id: lastId, changes: changesCount };
     } catch (err: any) {
       const errMsg = String(err?.message || err);
-      if (errMsg.includes('not opened')) {
+      if (errMsg.includes('not open') || errMsg.includes('not opened')) {
         console.warn('[Capacitor SQLite] DB not opened error detected, attempting to re-open...');
         dbInstance = null;
         dbPromise = null;
