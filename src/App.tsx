@@ -43,6 +43,11 @@ function App() {
   const [pTimezone, setPTimezone] = useState<string>('Asia/Calcutta');
   const [forceSetup, setForceSetup] = useState<boolean>(false);
 
+  const [syncState, setSyncState] = useState<{ status: string; pendingCount: number }>({
+    status: 'synced',
+    pendingCount: 0
+  });
+
   // Check saved session
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -64,12 +69,32 @@ function App() {
     }
   }, []);
 
-  // Synchronize TimerService lifecycle with user session
+  // Synchronize TimerService & SyncService lifecycle with user session
   useEffect(() => {
     if (user) {
       TimerService.init(user.id, (msg, type) => {
         showToast(msg, type);
       });
+
+      // Initialize SyncService
+      import('./services/SyncService').then(({ SyncService }) => {
+        const targetUid = user.firebase_uid || user.id.toString();
+        SyncService.init(targetUid);
+
+        const unsubStatus = SyncService.subscribeStatus((st) => {
+          setSyncState({ status: st.status, pendingCount: st.pendingCount });
+        });
+
+        const unsubData = SyncService.subscribeDataChange(() => {
+          // Trigger light refresh of current section when remote data arrives
+          setActiveSection((prev) => prev);
+        });
+
+        return () => {
+          unsubStatus();
+          unsubData();
+        };
+      }).catch(console.error);
 
       // Check due roadmap revisions
       db.getDueRevisions(user.id).then((due: any[]) => {
@@ -79,6 +104,9 @@ function App() {
       }).catch(console.error);
     } else {
       TimerService.cleanup();
+      import('./services/SyncService').then(({ SyncService }) => {
+        SyncService.cleanup();
+      }).catch(() => {});
     }
   }, [user]);
 
@@ -94,6 +122,9 @@ function App() {
 
   const handleLogout = async () => {
     try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.cleanup();
+
       const { logoutFirebase } = await import('./utils/firebase');
       await logoutFirebase();
     } catch (err) {
@@ -302,6 +333,68 @@ function App() {
             <h1 className="page-title">{formatTitle(activeSection)}</h1>
           </div>
           <div className="top-bar-right">
+            {/* Cloud Sync Status Indicator */}
+            <div
+              className="sync-status-pill"
+              title={
+                syncState.status === 'synced'
+                  ? 'All changes synchronized with Cloud'
+                  : syncState.status === 'syncing'
+                  ? 'Synchronizing with Cloud Firestore...'
+                  : syncState.status === 'pending'
+                  ? `${syncState.pendingCount} changes waiting to sync`
+                  : 'Offline mode: Changes saved to local database'
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 12px',
+                borderRadius: '20px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                background:
+                  syncState.status === 'synced'
+                    ? 'rgba(16, 185, 129, 0.15)'
+                    : syncState.status === 'syncing'
+                    ? 'rgba(99, 102, 241, 0.15)'
+                    : 'rgba(245, 158, 11, 0.15)',
+                color:
+                  syncState.status === 'synced'
+                    ? '#10b981'
+                    : syncState.status === 'syncing'
+                    ? '#818cf8'
+                    : '#f59e0b',
+                border:
+                  syncState.status === 'synced'
+                    ? '1px solid rgba(16, 185, 129, 0.3)'
+                    : syncState.status === 'syncing'
+                    ? '1px solid rgba(99, 102, 241, 0.3)'
+                    : '1px solid rgba(245, 158, 11, 0.3)',
+                marginRight: '12px'
+              }}
+            >
+              <i
+                className={`fa-solid ${
+                  syncState.status === 'synced'
+                    ? 'fa-cloud-check'
+                    : syncState.status === 'syncing'
+                    ? 'fa-rotate fa-spin'
+                    : syncState.status === 'pending'
+                    ? 'fa-cloud-arrow-up'
+                    : 'fa-cloud-slash'
+                }`}
+              ></i>
+              <span>
+                {syncState.status === 'synced'
+                  ? 'Synced'
+                  : syncState.status === 'syncing'
+                  ? 'Syncing...'
+                  : syncState.status === 'pending'
+                  ? `${syncState.pendingCount} pending`
+                  : 'Offline'}
+              </span>
+            </div>
             <div className="current-date">
               <i className="fa-regular fa-calendar"></i>
               <span>{getLocalDateHeaderStr()}</span>

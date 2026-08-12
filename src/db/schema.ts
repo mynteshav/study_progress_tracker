@@ -293,16 +293,16 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_roadmap_resources_topic ON roadmap_resources(topic_id);`,
   `CREATE INDEX IF NOT EXISTS idx_roadmap_checklists_topic ON roadmap_checklists(topic_id);`,
 
-  // 20. Password Reset Tokens Table
-  `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  // 21. Sync Queue Table
+  `CREATE TABLE IF NOT EXISTS sync_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    email TEXT NOT NULL,
-    token TEXT UNIQUE NOT NULL,
-    expires_at DATETIME NOT NULL,
-    used INTEGER CHECK(used IN (0, 1)) DEFAULT 0,
+    firebase_uid TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    operation TEXT CHECK(operation IN ('CREATE', 'UPDATE', 'DELETE')) NOT NULL,
+    payload TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    sync_status TEXT DEFAULT 'PENDING'
   );`,
-  `CREATE INDEX IF NOT EXISTS idx_password_reset_token ON password_reset_tokens(token);`
+  `CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(sync_status);`
 ];

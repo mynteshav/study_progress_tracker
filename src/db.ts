@@ -134,18 +134,35 @@ export const db = {
     );
     const nextOrder = (maxOrder && (maxOrder as any).max_val !== null) ? (maxOrder as any).max_val + 1 : 0;
 
-    return run(
+    const res = await run(
       `INSERT INTO topics (user_id, date, title, subject, est_minutes, priority, status, order_index)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [userId, date, title.trim(), subject.trim(), estMinutes, priority, status, nextOrder]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('topics', res.id, 'CREATE', {
+        id: res.id,
+        user_id: userId,
+        date,
+        title: title.trim(),
+        subject: subject.trim(),
+        est_minutes: estMinutes,
+        priority,
+        status,
+        order_index: nextOrder
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async updateTopic(id: number, fields: { title?: string; subject?: string; est_minutes?: number; priority?: string; status?: string }) {
     const topic = await get('SELECT * FROM topics WHERE id = ?', [id]) as any;
     if (!topic) throw new Error('Topic not found');
     
-    return run(
+    const res = await run(
       `UPDATE topics SET title = ?, subject = ?, est_minutes = ?, priority = ?, status = ? WHERE id = ?`,
       [
         fields.title !== undefined ? fields.title.trim() : topic.title,
@@ -156,10 +173,25 @@ export const db = {
         id
       ]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      const updated = await get('SELECT * FROM topics WHERE id = ?', [id]);
+      if (updated) {
+        SyncService.queueChange('topics', id, 'UPDATE', updated);
+      }
+    } catch (e) {}
+
+    return res;
   },
   
   async deleteTopic(id: number) {
-    return run('DELETE FROM topics WHERE id = ?', [id]);
+    const res = await run('DELETE FROM topics WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('topics', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
   
   async carryOverTopics(userId: number, fromDate: string, toDate: string) {
@@ -1257,5 +1289,134 @@ export const db = {
 
     await this.setActiveRoadmap(userId, roadmapId);
     return roadmapId;
+  },
+
+  // --- SYNC SERVICE DATABASE HELPERS ---
+  async addSyncQueueItem(firebaseUid: string, entityType: string, entityId: string, operation: 'CREATE' | 'UPDATE' | 'DELETE', payload: string) {
+    return run(
+      `INSERT INTO sync_queue (firebase_uid, entity_type, entity_id, operation, payload, sync_status)
+       VALUES (?, ?, ?, ?, ?, 'PENDING')`,
+      [firebaseUid, entityType, entityId, operation, payload]
+    );
+  },
+
+  async getPendingSyncQueue(firebaseUid: string) {
+    return query(
+      `SELECT * FROM sync_queue WHERE firebase_uid = ? AND sync_status = 'PENDING' ORDER BY id ASC`,
+      [firebaseUid]
+    );
+  },
+
+  async markSyncQueueItemSynced(id: number) {
+    return run(`UPDATE sync_queue SET sync_status = 'SYNCED' WHERE id = ?`, [id]);
+  },
+
+  async getAllRecordsForSync(tableName: string, userId: number) {
+    try {
+      return await query(`SELECT * FROM ${tableName} WHERE user_id = ?`, [userId]);
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async genericUpsert(tableName: string, record: any) {
+    if (!record || !record.id) return;
+    const cols = Object.keys(record);
+    const placeholders = cols.map(() => '?').join(', ');
+    const updateCols = cols.map(c => `${c} = excluded.${c}`).join(', ');
+    const values = cols.map(c => record[c]);
+
+    const sql = `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders})
+                 ON CONFLICT(id) DO UPDATE SET ${updateCols}`;
+    return run(sql, values);
+  },
+
+  async genericDelete(tableName: string, id: string | number) {
+    return run(`DELETE FROM ${tableName} WHERE id = ?`, [id]);
+  },
+
+  async saveRemoteTopic(topic: any) {
+    if (!topic || !topic.id) return;
+    return run(
+      `INSERT INTO topics (id, user_id, date, title, subject, est_minutes, priority, status, carried_over_from, order_index)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         date = excluded.date, title = excluded.title, subject = excluded.subject,
+         est_minutes = excluded.est_minutes, priority = excluded.priority,
+         status = excluded.status, order_index = excluded.order_index`,
+      [topic.id, topic.user_id, topic.date, topic.title, topic.subject, topic.est_minutes, topic.priority, topic.status, topic.carried_over_from || null, topic.order_index || 0]
+    );
+  },
+
+  async saveRemoteNote(note: any) {
+    if (!note || !note.id) return;
+    return run(
+      `INSERT INTO notes (id, user_id, title, subject, body, linked_topic_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title, subject = excluded.subject, body = excluded.body,
+         linked_topic_id = excluded.linked_topic_id, updated_at = excluded.updated_at`,
+      [note.id, note.user_id, note.title, note.subject, note.body, note.linked_topic_id || null, note.created_at, note.updated_at]
+    );
+  },
+
+  async saveRemoteHabit(habit: any) {
+    if (!habit || !habit.id) return;
+    return run(
+      `INSERT INTO habits (id, user_id, name, target_days, auto_linked, target_value)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name, target_days = excluded.target_days,
+         auto_linked = excluded.auto_linked, target_value = excluded.target_value`,
+      [habit.id, habit.user_id, habit.name, habit.target_days, habit.auto_linked || 'none', habit.target_value || 0]
+    );
+  },
+
+  async saveRemoteProject(project: any) {
+    if (!project || !project.id) return;
+    return run(
+      `INSERT INTO projects (id, user_id, name, description, status, start_date, target_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name, description = excluded.description,
+         status = excluded.status, start_date = excluded.start_date, target_date = excluded.target_date`,
+      [project.id, project.user_id, project.name, project.description, project.status, project.start_date, project.target_date]
+    );
+  },
+
+  async saveRemoteDsaProblem(prob: any) {
+    if (!prob || !prob.id) return;
+    return run(
+      `INSERT INTO dsa_problems (id, user_id, title, platform, url, pattern, difficulty, status, time_spent_minutes, date_solved, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title, platform = excluded.platform, url = excluded.url,
+         pattern = excluded.pattern, difficulty = excluded.difficulty, status = excluded.status,
+         time_spent_minutes = excluded.time_spent_minutes, date_solved = excluded.date_solved, notes = excluded.notes`,
+      [prob.id, prob.user_id, prob.title, prob.platform, prob.url, prob.pattern, prob.difficulty, prob.status, prob.time_spent_minutes, prob.date_solved, prob.notes]
+    );
+  },
+
+  async saveRemoteTimetableBlock(block: any) {
+    if (!block || !block.id) return;
+    return run(
+      `INSERT INTO timetable_blocks (id, user_id, day_of_week, start_time, end_time, subject, color, recurring, specific_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         day_of_week = excluded.day_of_week, start_time = excluded.start_time, end_time = excluded.end_time,
+         subject = excluded.subject, color = excluded.color, recurring = excluded.recurring, specific_date = excluded.specific_date`,
+      [block.id, block.user_id, block.day_of_week, block.start_time, block.end_time, block.subject, block.color, block.recurring, block.specific_date]
+    );
+  },
+
+  async saveRemoteFocusSession(session: any) {
+    if (!session || !session.id) return;
+    return run(
+      `INSERT INTO focus_sessions (id, user_id, topic_id, subject, start_time, end_time, duration_minutes, type, note, scheduled_duration, actual_duration, saved_time, save_time_used, task_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         subject = excluded.subject, duration_minutes = excluded.duration_minutes, note = excluded.note`,
+      [session.id, session.user_id, session.topic_id || null, session.subject, session.start_time, session.end_time, session.duration_minutes, session.type, session.note, session.scheduled_duration || 0, session.actual_duration || 0, session.saved_time || 0, session.save_time_used || 0, session.task_name || '']
+    );
   }
 };

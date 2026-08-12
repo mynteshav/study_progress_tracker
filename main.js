@@ -415,6 +415,21 @@ function createDatabaseSchema() {
       )
     `);
 
+    // Sync Queue Table
+    runSchemaQuery(`
+      CREATE TABLE IF NOT EXISTS sync_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        firebase_uid TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        operation TEXT CHECK(operation IN ('CREATE', 'UPDATE', 'DELETE')) NOT NULL,
+        payload TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        sync_status TEXT DEFAULT 'PENDING'
+      )
+    `);
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(sync_status)');
+
     // Indexes for speed optimization
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_password_reset_token ON password_reset_tokens(token)');
