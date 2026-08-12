@@ -48,6 +48,46 @@ export const db = {
     );
   },
 
+  // Password Reset Methods
+  async createPasswordResetToken(email: string, token: string, expiresAtISO: string) {
+    const user = await this.getUserByEmail(email);
+    if (!user) {
+      return null;
+    }
+    await run(
+      'INSERT INTO password_reset_tokens (user_id, email, token, expires_at, used) VALUES (?, ?, ?, ?, 0)',
+      [user.id, user.email, token, expiresAtISO]
+    );
+    return { token, userId: user.id, email: user.email, expiresAt: expiresAtISO };
+  },
+
+  async getPasswordResetToken(token: string) {
+    return get('SELECT * FROM password_reset_tokens WHERE token = ?', [token]);
+  },
+
+  async resetPasswordWithToken(token: string, newPasswordHash: string) {
+    const record = await this.getPasswordResetToken(token);
+    if (!record) {
+      throw new Error('Invalid or non-existent password reset link.');
+    }
+    if (record.used === 1) {
+      throw new Error('This password reset link has already been used.');
+    }
+    const now = new Date();
+    const expiry = new Date(record.expires_at);
+    if (now > expiry) {
+      throw new Error('This password reset link has expired. Please request a new one.');
+    }
+
+    // Update user password
+    await run('UPDATE users SET password_hash = ? WHERE id = ?', [newPasswordHash, record.user_id]);
+
+    // Mark token as used
+    await run('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [record.id]);
+
+    return { success: true, userId: record.user_id, email: record.email };
+  },
+
   // Today's Topics
   async getTopics(userId: number, date: string) {
     return query(

@@ -1,24 +1,76 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../db';
 import { authHelper } from '../utils/auth';
 import { User } from '../App';
+import ForgotPassword from './ForgotPassword';
+import ResetPassword from './ResetPassword';
 
 interface AuthProps {
   setUser: (user: User) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
+type AuthViewMode = 'auth' | 'forgot-password' | 'reset-password';
+
 function Auth({ setUser, showToast }: AuthProps) {
+  const [viewMode, setViewMode] = useState<AuthViewMode>('auth');
+  const [resetToken, setResetToken] = useState<string>('');
+  
   const [isLogin, setIsLogin] = useState<boolean>(true);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Sync hash routing and URL parameters
+  useEffect(() => {
+    const parseUrlHash = () => {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      const combined = hash + search;
+
+      if (combined.includes('reset-password') || combined.includes('token=')) {
+        const match = combined.match(/token=([^&]+)/);
+        if (match) {
+          setResetToken(decodeURIComponent(match[1]));
+        }
+        setViewMode('reset-password');
+      } else if (combined.includes('forgot-password')) {
+        setViewMode('forgot-password');
+      } else {
+        setViewMode('auth');
+      }
+    };
+
+    parseUrlHash();
+    window.addEventListener('hashchange', parseUrlHash);
+    return () => window.removeEventListener('hashchange', parseUrlHash);
+  }, []);
+
+  const handleBackToLogin = () => {
+    setViewMode('auth');
+    setIsLogin(true);
+    window.location.hash = '';
+  };
+
+  const handleNavigateReset = (token: string) => {
+    setResetToken(token);
+    setViewMode('reset-password');
+    window.location.hash = `#/reset-password?token=${token}`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password || (!isLogin && !name)) {
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    if (!cleanEmail || !password || (!isLogin && !name.trim())) {
       showToast('Please fill in all required fields.', 'error');
+      return;
+    }
+
+    if (!authHelper.validateEmail(cleanEmail)) {
+      showToast('Please enter a valid email address.', 'error');
       return;
     }
 
@@ -27,10 +79,9 @@ function Auth({ setUser, showToast }: AuthProps) {
     try {
       if (isLogin) {
         // Handle login
-        const userRecord = await db.getUserByEmail(email);
+        const userRecord = await db.getUserByEmail(cleanEmail);
         if (!userRecord) {
           showToast('Invalid email or password.', 'error');
-          setLoading(false);
           return;
         }
 
@@ -38,7 +89,6 @@ function Auth({ setUser, showToast }: AuthProps) {
 
         if (!isValid) {
           showToast('Invalid email or password.', 'error');
-          setLoading(false);
           return;
         }
 
@@ -56,21 +106,19 @@ function Auth({ setUser, showToast }: AuthProps) {
         setUser(sessionUser);
       } else {
         // Handle signup
-        const existing = await db.getUserByEmail(email);
+        const existing = await db.getUserByEmail(cleanEmail);
         if (existing) {
           showToast('A user with this email already exists.', 'error');
-          setLoading(false);
           return;
         }
 
         const hash = await authHelper.hashPassword(password);
-
-        const result = await db.createUser(name, email, hash);
+        const result = await db.createUser(name, cleanEmail, hash);
         
         const newUser: User = {
           id: result.id,
           name: name.trim(),
-          email: email.toLowerCase().trim(),
+          email: cleanEmail,
           daily_goal_minutes: 60,
           timezone: '',
           isNew: true
@@ -81,12 +129,32 @@ function Auth({ setUser, showToast }: AuthProps) {
         setUser(newUser);
       }
     } catch (err: any) {
-      console.error(err);
+      console.error('Authentication error:', err);
       showToast(err.message || 'An error occurred during authentication.', 'error');
     } finally {
       setLoading(false);
     }
   };
+
+  if (viewMode === 'forgot-password') {
+    return (
+      <ForgotPassword
+        onBackToLogin={handleBackToLogin}
+        onNavigateReset={handleNavigateReset}
+        showToast={showToast}
+      />
+    );
+  }
+
+  if (viewMode === 'reset-password') {
+    return (
+      <ResetPassword
+        tokenProp={resetToken}
+        onBackToLogin={handleBackToLogin}
+        showToast={showToast}
+      />
+    );
+  }
 
   return (
     <div className="auth-container">
@@ -110,6 +178,7 @@ function Auth({ setUser, showToast }: AuthProps) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter your display name"
                 required
+                autoComplete="name"
               />
             </div>
           )}
@@ -123,11 +192,32 @@ function Auth({ setUser, showToast }: AuthProps) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
+              autoComplete="email"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="auth-password">Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label htmlFor="auth-password">Password</label>
+              {isLogin && (
+                <a
+                  href="#/forgot-password"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setViewMode('forgot-password');
+                    window.location.hash = '#/forgot-password';
+                  }}
+                  style={{
+                    fontSize: '0.8rem',
+                    color: '#818cf8',
+                    textDecoration: 'none',
+                    fontWeight: 500
+                  }}
+                >
+                  Forgot Password?
+                </a>
+              )}
+            </div>
             <input
               type="password"
               id="auth-password"
@@ -135,6 +225,7 @@ function Auth({ setUser, showToast }: AuthProps) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
+              autoComplete={isLogin ? 'current-password' : 'new-password'}
             />
           </div>
 

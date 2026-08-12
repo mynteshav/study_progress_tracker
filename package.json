@@ -14,6 +14,7 @@
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.1",
     "@capacitor/core": "^8.5.0",
+    "@emailjs/browser": "^4.4.1",
     "bcryptjs": "^2.4.3",
     "chart.js": "^4.4.1",
     "jeep-sqlite": "^2.8.0",

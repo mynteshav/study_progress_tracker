@@ -2,11 +2,13 @@ import { Capacitor } from '@capacitor/core';
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { SCHEMA_STATEMENTS } from './schema';
 import { IDatabaseAdapter } from './types';
+import { webAdapter } from './webAdapter';
 
 let sqliteConnection: SQLiteConnection | null = null;
 let dbInstance: SQLiteDBConnection | null = null;
 let dbPromise: Promise<SQLiteDBConnection> | null = null;
 let isWebStoreInitialized = false;
+let useWebFallback = false;
 
 async function initWebStoreIfNeeded(): Promise<void> {
   if (isWebStoreInitialized) return;
@@ -31,6 +33,10 @@ async function initWebStoreIfNeeded(): Promise<void> {
 }
 
 async function ensureDb(): Promise<SQLiteDBConnection> {
+  if (useWebFallback) {
+    throw new Error('Using web fallback adapter');
+  }
+
   if (dbInstance) {
     try {
       const isOpen = await dbInstance.isDBOpen();
@@ -41,7 +47,6 @@ async function ensureDb(): Promise<SQLiteDBConnection> {
         return dbInstance;
       }
     } catch (e) {
-      // If check fails, reset instance to force re-initialization
       dbInstance = null;
     }
   }
@@ -79,7 +84,6 @@ async function ensureDb(): Promise<SQLiteDBConnection> {
         await dbInstance.open();
       }
 
-      // Execute initial DDL schema statements
       for (const statement of SCHEMA_STATEMENTS) {
         try {
           await dbInstance.execute(statement);
@@ -101,7 +105,8 @@ async function ensureDb(): Promise<SQLiteDBConnection> {
     } catch (err) {
       dbPromise = null;
       dbInstance = null;
-      console.error('[Capacitor SQLite] Initialization failed:', err);
+      useWebFallback = true;
+      console.warn('[Capacitor SQLite] Initialization failed, using web fallback:', err);
       throw err;
     }
   })();
@@ -111,32 +116,29 @@ async function ensureDb(): Promise<SQLiteDBConnection> {
 
 export const capacitorAdapter: IDatabaseAdapter = {
   async initDb(): Promise<void> {
-    await ensureDb();
+    try {
+      await ensureDb();
+    } catch {
+      if (webAdapter.initDb) {
+        await webAdapter.initDb();
+      }
+    }
   },
 
   async query(sql: string, params: any[] = []): Promise<any[]> {
-    let db = await ensureDb();
     try {
+      let db = await ensureDb();
       const res = await db.query(sql, params);
       return res.values || [];
     } catch (err: any) {
-      const errMsg = String(err?.message || err);
-      if (errMsg.includes('not open') || errMsg.includes('not opened')) {
-        console.warn('[Capacitor SQLite] DB not opened error detected, attempting to re-open...');
-        dbInstance = null;
-        dbPromise = null;
-        db = await ensureDb();
-        const res = await db.query(sql, params);
-        return res.values || [];
-      }
-      console.error('[Capacitor SQLite] Query error:', err, sql, params);
-      throw err;
+      useWebFallback = true;
+      return webAdapter.query(sql, params);
     }
   },
 
   async run(sql: string, params: any[] = []): Promise<{ id: number; changes: number }> {
-    let db = await ensureDb();
     try {
+      let db = await ensureDb();
       const res = await db.run(sql, params);
       if (Capacitor.getPlatform() === 'web' && sqliteConnection) {
         await sqliteConnection.saveToStore('study_tracker');
@@ -145,27 +147,17 @@ export const capacitorAdapter: IDatabaseAdapter = {
       const changesCount = res.changes?.changes !== undefined ? res.changes.changes : 0;
       return { id: lastId, changes: changesCount };
     } catch (err: any) {
-      const errMsg = String(err?.message || err);
-      if (errMsg.includes('not open') || errMsg.includes('not opened')) {
-        console.warn('[Capacitor SQLite] DB not opened error detected, attempting to re-open...');
-        dbInstance = null;
-        dbPromise = null;
-        db = await ensureDb();
-        const res = await db.run(sql, params);
-        if (Capacitor.getPlatform() === 'web' && sqliteConnection) {
-          await sqliteConnection.saveToStore('study_tracker');
-        }
-        const lastId = res.changes?.lastId !== undefined ? res.changes.lastId : 0;
-        const changesCount = res.changes?.changes !== undefined ? res.changes.changes : 0;
-        return { id: lastId, changes: changesCount };
-      }
-      console.error('[Capacitor SQLite] Run error:', err, sql, params);
-      throw err;
+      useWebFallback = true;
+      return webAdapter.run(sql, params);
     }
   },
 
   async get(sql: string, params: any[] = []): Promise<any> {
-    const rows = await this.query(sql, params);
-    return rows.length > 0 ? rows[0] : null;
+    try {
+      const rows = await this.query(sql, params);
+      return rows.length > 0 ? rows[0] : null;
+    } catch (err: any) {
+      return webAdapter.get(sql, params);
+    }
   }
 };

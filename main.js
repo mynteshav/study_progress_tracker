@@ -396,8 +396,23 @@ function createDatabaseSchema() {
       )
     `);
 
+    // Password reset tokens
+    runSchemaQuery(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        email TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used INTEGER CHECK(used IN (0, 1)) DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Indexes for speed optimization
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+    runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_password_reset_token ON password_reset_tokens(token)');
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_topics_user_date ON topics(user_id, date)');
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_focus_user_start ON focus_sessions(user_id, start_time)');
     runSchemaQuery('CREATE INDEX IF NOT EXISTS idx_dsa_user_date ON dsa_problems(user_id, date_solved)');

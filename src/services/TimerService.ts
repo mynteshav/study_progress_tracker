@@ -44,7 +44,7 @@ let state: TimerState = { ...DEFAULT_STATE };
 let userId: number | null = null;
 const listeners = new Set<Listener>();
 const sessionLoggedListeners = new Set<SessionLoggedListener>();
-let tickInterval: NodeJS.Timeout | null = null;
+let tickInterval: ReturnType<typeof setInterval> | null = null;
 let showToastCb: ((msg: string, type: 'success' | 'error' | 'warning' | 'info') => void) | null = null;
 
 // Audio alerts tone generation
