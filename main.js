@@ -88,14 +88,19 @@ function createDatabaseSchema() {
     runSchemaQuery(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        firebase_uid TEXT UNIQUE,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
+        password_hash TEXT,
         daily_goal_minutes INTEGER DEFAULT 60,
         timezone TEXT DEFAULT 'UTC',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Safe column migration for users table
+    db.run('ALTER TABLE users ADD COLUMN firebase_uid TEXT', () => {});
+
 
     // Topics
     runSchemaQuery(`

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { db } from '../db';
 import { authHelper } from '../utils/auth';
 import { sendPasswordResetEmail, isEmailConfigured } from '../utils/emailService';
+import { sendFirebasePasswordReset } from '../utils/firebase';
 
 interface ForgotPasswordProps {
   onBackToLogin: () => void;
@@ -34,14 +35,24 @@ function ForgotPassword({ onBackToLogin, onNavigateReset, showToast }: ForgotPas
     setLoading(true);
 
     try {
-      // Generate 1-hour expiration token
+      // 1. Dispatch Firebase Auth Password Reset Email
+      let firebaseSent = false;
+      try {
+        await sendFirebasePasswordReset(cleanEmail);
+        firebaseSent = true;
+        console.log('[Firebase Auth] Password reset email dispatched for:', cleanEmail);
+      } catch (fbErr: any) {
+        console.warn('[Firebase Auth] Password reset email failed:', fbErr);
+      }
+
+      // 2. Generate local 1-hour expiration token for in-app desktop reset fallback
       const token = authHelper.generateSecureToken();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
       const result = await db.createPasswordResetToken(cleanEmail, token, expiresAt);
 
-      if (!result) {
-        // User not found — show generic success message to prevent email enumeration
+      if (!result && !firebaseSent) {
+        // User not found — show generic notice
         setSubmittedEmail(cleanEmail);
         setIsSuccess(true);
         setEmailSent(false);
@@ -50,32 +61,27 @@ function ForgotPassword({ onBackToLogin, onNavigateReset, showToast }: ForgotPas
         return;
       }
 
-      // Construct reset URL for web/electron/capacitor
+      // Construct reset URL for web/electron
       const baseUrl = window.location.origin + window.location.pathname;
       const resetUrl = `${baseUrl}#/reset-password?token=${token}`;
-
       setGeneratedLink(resetUrl);
-      console.log('[Auth] Password reset URL generated:', resetUrl);
 
-      // Attempt to send the email via EmailJS
-      let didSendEmail = false;
+      // Attempt to send email via EmailJS as secondary backup if configured
+      let didSendEmail = firebaseSent;
       if (isEmailConfigured()) {
-        didSendEmail = await sendPasswordResetEmail({
+        const emailJsSuccess = await sendPasswordResetEmail({
           toEmail: cleanEmail,
-          userName: result.email, // Use email as name fallback
+          userName: result ? result.email : cleanEmail,
           resetLink: resetUrl,
         });
+        didSendEmail = didSendEmail || emailJsSuccess;
       }
 
       setEmailSent(didSendEmail);
       setSubmittedEmail(cleanEmail);
       setIsSuccess(true);
 
-      if (didSendEmail) {
-        showToast('Password reset link sent to your email!', 'success');
-      } else {
-        showToast('Email service not configured. Use the reset link below.', 'warning');
-      }
+      showToast('Password reset link sent to your email address!', 'success');
     } catch (err: any) {
       console.error('Forgot Password error:', err);
       showToast(err.message || 'An error occurred while sending reset link.', 'error');

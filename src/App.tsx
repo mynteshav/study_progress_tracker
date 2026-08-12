@@ -16,6 +16,7 @@ import { TimerService } from './services/TimerService';
 
 export interface User {
   id: number;
+  firebase_uid?: string;
   name: string;
   email: string;
   daily_goal_minutes: number;
@@ -91,7 +92,13 @@ function App() {
     }, 4500);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { logoutFirebase } = await import('./utils/firebase');
+      await logoutFirebase();
+    } catch (err) {
+      console.warn('[Firebase Auth] Signout notice:', err);
+    }
     localStorage.removeItem('user');
     setUser(null);
     showToast('Logged out successfully', 'success');

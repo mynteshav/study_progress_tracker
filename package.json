@@ -17,6 +17,7 @@
     "@emailjs/browser": "^4.4.1",
     "bcryptjs": "^2.4.3",
     "chart.js": "^4.4.1",
+    "firebase": "^12.17.1",
     "jeep-sqlite": "^2.8.0",
     "lucide-react": "^1.29.0",
     "react": "^18.2.0",

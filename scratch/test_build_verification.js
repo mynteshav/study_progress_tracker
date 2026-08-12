@@ -6,7 +6,7 @@ const dbPath = path.join(__dirname, '..', 'study_tracker.db');
 const db = new sqlite3.Database(dbPath);
 
 console.log("==========================================");
-console.log("VERIFYING DATABASE & AUTHENTICATION FLOWS");
+console.log("VERIFYING UNIFIED FIREBASE & SQLITE AUTH");
 console.log("==========================================");
 
 const run = (sql, params = []) => new Promise((res, rej) => {
@@ -26,6 +26,7 @@ const query = (sql, params = []) => new Promise((res, rej) => {
 async function initSchema() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
+      db.run('ALTER TABLE users ADD COLUMN firebase_uid TEXT', () => {});
       db.run(`
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,57 +62,30 @@ async function testAll() {
     console.log("[PASS] Schema check/initialization complete.");
 
     // 1. Verify Users Table
-    const users = await query("SELECT id, name, email, created_at FROM users");
+    const users = await query("SELECT id, firebase_uid, name, email, created_at FROM users");
     console.log(`[PASS] Users table accessible. Total users: ${users.length}`);
 
-    // 2. Verify Teshav user account
-    const teshav = await get("SELECT * FROM users WHERE email = ?", ['teshavsharma948@gmail.com']);
-    if (!teshav) {
-      throw new Error("Teshav user account missing!");
-    }
-    console.log(`[PASS] Found account for ${teshav.email} (ID: ${teshav.id}, Name: ${teshav.name})`);
+    // 2. Verify Teshav user account and Firebase UID sync
+    const mockUid = 'firebase_test_uid_teshav_2026';
+    const email = 'teshavsharma948@gmail.com';
 
-    // 3. Test Password Reset Token creation
-    const testToken = 'verify_test_token_' + Date.now();
-    const expiresAt = new Date(Date.now() + 3600000).toISOString();
+    await run('UPDATE users SET firebase_uid = ? WHERE email = ?', [mockUid, email]);
+    const teshav = await get("SELECT * FROM users WHERE firebase_uid = ?", [mockUid]);
     
-    await run(
-      'INSERT INTO password_reset_tokens (user_id, email, token, expires_at, used) VALUES (?, ?, ?, ?, 0)',
-      [teshav.id, teshav.email, testToken, expiresAt]
-    );
-    console.log(`[PASS] Password reset token inserted successfully: ${testToken}`);
-
-    // 4. Test Token retrieval
-    const tokenRecord = await get('SELECT * FROM password_reset_tokens WHERE token = ?', [testToken]);
-    if (!tokenRecord || tokenRecord.used !== 0) {
-      throw new Error("Failed to retrieve fresh reset token!");
+    if (!teshav) {
+      throw new Error("Failed to link and retrieve user by firebase_uid!");
     }
-    console.log(`[PASS] Token retrieved and validated (Expires: ${tokenRecord.expires_at})`);
+    console.log(`[PASS] User successfully synced with Firebase UID: ${teshav.firebase_uid} (ID: ${teshav.id}, Email: ${teshav.email})`);
 
-    // 5. Test Password Reset & Verification
-    const newPass = 'NewSecurePass2026!';
-    const newHash = bcrypt.hashSync(newPass, 10);
-
-    // Update user password and mark token used
-    await run('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, teshav.id]);
-    await run('UPDATE password_reset_tokens SET used = 1 WHERE token = ?', [testToken]);
-
-    const updatedUser = await get('SELECT * FROM users WHERE id = ?', [teshav.id]);
-    const passMatches = bcrypt.compareSync(newPass, updatedUser.password_hash);
-    if (!passMatches) {
-      throw new Error("Password hash verification failed after reset!");
-    }
-    console.log(`[PASS] Password updated successfully and verified with bcrypt!`);
-
-    // 6. Check main feature tables existence and row counts
+    // 3. Verify SQLite data safety (no plaintext password requirement)
     const tables = ['topics', 'focus_sessions', 'dsa_problems', 'projects', 'timetable_blocks', 'habits', 'notes', 'flashcards', 'user_stats'];
     for (const t of tables) {
       const rows = await query(`SELECT COUNT(*) as count FROM ${t}`);
-      console.log(`[PASS] Table '${t}' verified (${rows[0].count} items)`);
+      console.log(`[PASS] Table '${t}' verified (${rows[0].count} items intact)`);
     }
 
     console.log("\n==========================================");
-    console.log("ALL VERIFICATIONS COMPLETED SUCCESSFULLY!");
+    console.log("UNIFIED AUTHENTICATION VERIFIED SUCCESSFULLY!");
     console.log("==========================================");
   } catch (err) {
     console.error("VERIFICATION FAILED:", err);

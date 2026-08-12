@@ -30,16 +30,46 @@ export const db = {
     return get('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
   },
   
-  async getUserById(id: number) {
-    return get('SELECT id, name, email, daily_goal_minutes, timezone, created_at FROM users WHERE id = ?', [id]);
+  async getUserByFirebaseUid(uid: string) {
+    return get('SELECT * FROM users WHERE firebase_uid = ?', [uid]);
   },
   
-  async createUser(name: string, email: string, passwordHash: string) {
+  async getUserById(id: number) {
+    return get('SELECT id, firebase_uid, name, email, daily_goal_minutes, timezone, created_at FROM users WHERE id = ?', [id]);
+  },
+  
+  async createUser(name: string, email: string, passwordHash: string = '', firebaseUid: string = '') {
     return run(
-      'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
-      [name.trim(), email.toLowerCase().trim(), passwordHash]
+      'INSERT INTO users (firebase_uid, name, email, password_hash) VALUES (?, ?, ?, ?)',
+      [firebaseUid, name.trim(), email.toLowerCase().trim(), passwordHash]
     );
   },
+
+  async syncFirebaseUser(firebaseUid: string, email: string, displayName?: string) {
+    const cleanEmail = email.toLowerCase().trim();
+    // 1. Check by firebase_uid
+    let user = await get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+    if (user) {
+      return user;
+    }
+
+    // 2. Check by email and update firebase_uid link
+    user = await get('SELECT * FROM users WHERE email = ?', [cleanEmail]);
+    if (user) {
+      await run('UPDATE users SET firebase_uid = ? WHERE id = ?', [firebaseUid, user.id]);
+      return await get('SELECT * FROM users WHERE id = ?', [user.id]);
+    }
+
+    // 3. Create new user record for this Firebase UID
+    const fallbackName = displayName?.trim() || cleanEmail.split('@')[0] || 'User';
+    const result = await run(
+      'INSERT INTO users (firebase_uid, name, email, daily_goal_minutes, timezone) VALUES (?, ?, ?, 60, "UTC")',
+      [firebaseUid, fallbackName, cleanEmail]
+    );
+
+    return await get('SELECT * FROM users WHERE id = ?', [result.id]);
+  },
+
   
   async updateUserProfile(id: number, name: string, dailyGoalMinutes: number, timezone: string) {
     return run(

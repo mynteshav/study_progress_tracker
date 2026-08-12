@@ -5,6 +5,8 @@ import { User } from '../App';
 import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
 
+import { signUpWithFirebase, loginWithFirebase } from '../utils/firebase';
+
 interface AuthProps {
   setUser: (user: User) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
@@ -78,45 +80,79 @@ function Auth({ setUser, showToast }: AuthProps) {
 
     try {
       if (isLogin) {
-        // Handle login
-        const userRecord = await db.getUserByEmail(cleanEmail);
-        if (!userRecord) {
-          showToast('Invalid email or password.', 'error');
-          return;
+        // Authenticate with Firebase Auth
+        let fbUser;
+        try {
+          fbUser = await loginWithFirebase(cleanEmail, password);
+        } catch (fbErr: any) {
+          console.warn('[Firebase Auth] Primary login failed:', fbErr);
+
+          // Legacy desktop fallback: Check local SQLite DB
+          const localUser = await db.getUserByEmail(cleanEmail);
+          if (localUser && localUser.password_hash) {
+            const isValid = await authHelper.comparePassword(password, localUser.password_hash);
+            if (isValid) {
+              try {
+                fbUser = await signUpWithFirebase(cleanEmail, password, localUser.name);
+              } catch (e) {
+                try {
+                  fbUser = await loginWithFirebase(cleanEmail, password);
+                } catch (e2) {}
+              }
+            }
+          }
+
+          if (!fbUser) {
+            showToast('Invalid email or password.', 'error');
+            return;
+          }
         }
 
-        const isValid = await authHelper.comparePassword(password, userRecord.password_hash);
-
-        if (!isValid) {
-          showToast('Invalid email or password.', 'error');
-          return;
-        }
+        // Synchronize Firebase User with local SQLite DB
+        const syncedUser = await db.syncFirebaseUser(
+          fbUser.uid,
+          fbUser.email || cleanEmail,
+          fbUser.displayName || undefined
+        );
 
         const sessionUser: User = {
-          id: userRecord.id,
-          name: userRecord.name,
-          email: userRecord.email,
-          daily_goal_minutes: userRecord.daily_goal_minutes,
-          timezone: userRecord.timezone,
-          isNew: userRecord.daily_goal_minutes === 60 && !userRecord.timezone
+          id: syncedUser.id,
+          firebase_uid: fbUser.uid,
+          name: syncedUser.name,
+          email: syncedUser.email,
+          daily_goal_minutes: syncedUser.daily_goal_minutes || 60,
+          timezone: syncedUser.timezone || '',
+          isNew: syncedUser.daily_goal_minutes === 60 && !syncedUser.timezone
         };
 
         localStorage.setItem('user', JSON.stringify(sessionUser));
         showToast(`Welcome back, ${sessionUser.name}!`, 'success');
         setUser(sessionUser);
       } else {
-        // Handle signup
-        const existing = await db.getUserByEmail(cleanEmail);
-        if (existing) {
-          showToast('A user with this email already exists.', 'error');
+        // Create new account via Firebase Auth
+        let fbUser;
+        try {
+          fbUser = await signUpWithFirebase(cleanEmail, password, name);
+        } catch (fbErr: any) {
+          console.error('[Firebase Auth] Signup error:', fbErr);
+          if (fbErr.code === 'auth/email-already-in-use') {
+            showToast('An account with this email already exists.', 'error');
+          } else {
+            showToast(fbErr.message || 'Failed to create account.', 'error');
+          }
           return;
         }
 
-        const hash = await authHelper.hashPassword(password);
-        const result = await db.createUser(name, cleanEmail, hash);
-        
+        // Sync new Firebase user to local SQLite DB
+        const syncedUser = await db.syncFirebaseUser(
+          fbUser.uid,
+          fbUser.email || cleanEmail,
+          name.trim()
+        );
+
         const newUser: User = {
-          id: result.id,
+          id: syncedUser.id,
+          firebase_uid: fbUser.uid,
           name: name.trim(),
           email: cleanEmail,
           daily_goal_minutes: 60,
@@ -125,7 +161,7 @@ function Auth({ setUser, showToast }: AuthProps) {
         };
 
         localStorage.setItem('user', JSON.stringify(newUser));
-        showToast('Account created successfully!', 'success');
+        showToast('Account created successfully across Desktop & Web!', 'success');
         setUser(newUser);
       }
     } catch (err: any) {
