@@ -103,7 +103,20 @@ function Auth({ setUser, showToast }: AuthProps) {
           }
 
           if (!fbUser) {
-            showToast('Invalid email or password.', 'error');
+            let errorMsg = 'Invalid email or password.';
+            if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential') {
+              errorMsg = 'No Firebase account found with these credentials. Please click "Sign Up" below to register across Desktop & Web!';
+            } else if (fbErr.code === 'auth/wrong-password') {
+              errorMsg = 'Incorrect password. Please try again or click "Forgot Password?".';
+            } else if (fbErr.code === 'auth/unauthorized-domain') {
+              errorMsg = 'Netlify domain is not authorized in Firebase Console -> Authentication -> Settings -> Authorized domains.';
+            } else if (fbErr.code === 'auth/invalid-api-key' || fbErr.code === 'auth/api-key-not-valid') {
+              errorMsg = 'Invalid Firebase API Key. Please verify your environment variables in Netlify Dashboard.';
+            } else if (fbErr.message) {
+              errorMsg = fbErr.message;
+            }
+
+            showToast(errorMsg, 'error');
             return;
           }
         }
@@ -135,11 +148,15 @@ function Auth({ setUser, showToast }: AuthProps) {
           fbUser = await signUpWithFirebase(cleanEmail, password, name);
         } catch (fbErr: any) {
           console.error('[Firebase Auth] Signup error:', fbErr);
+          let errorMsg = fbErr.message || 'Failed to create account.';
           if (fbErr.code === 'auth/email-already-in-use') {
-            showToast('An account with this email already exists.', 'error');
-          } else {
-            showToast(fbErr.message || 'Failed to create account.', 'error');
+            errorMsg = 'An account with this email already exists on Firebase. Please click "Log In" below.';
+          } else if (fbErr.code === 'auth/unauthorized-domain') {
+            errorMsg = 'Netlify domain is not authorized in Firebase Console -> Authentication -> Settings -> Authorized domains.';
+          } else if (fbErr.code === 'auth/weak-password') {
+            errorMsg = 'Password should be at least 6 characters.';
           }
+          showToast(errorMsg, 'error');
           return;
         }
 
