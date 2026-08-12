@@ -36,7 +36,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
-  
+
   // Profile edit form state
   const [pName, setPName] = useState<string>('');
   const [pGoal, setPGoal] = useState<number>(1);
@@ -53,7 +53,7 @@ function App() {
         setPName(u.name || '');
         setPGoal((u.daily_goal_minutes / 60) || 1);
         setPTimezone(u.timezone || 'Asia/Calcutta');
-        
+
         if (u.isNew || !u.timezone) {
           setForceSetup(true);
           setShowProfileModal(true);
@@ -85,7 +85,7 @@ function App() {
   const showToast = (message: string, type: ToastMessage['type'] = 'success') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
-    
+
     // Auto-remove after 4.5 seconds
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
@@ -107,12 +107,12 @@ function App() {
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    
+
     const minutes = Math.round(pGoal * 60);
-    
+
     try {
       await db.updateUserProfile(user.id, pName, minutes, pTimezone);
-      
+
       const updatedUser: User = {
         ...user,
         name: pName,
@@ -120,7 +120,7 @@ function App() {
         timezone: pTimezone,
         isNew: false
       };
-      
+
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setShowProfileModal(false);
@@ -135,24 +135,24 @@ function App() {
   const playBellAlert = (type: 'work' | 'break' = 'work') => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
+
       const playTone = (freq: number, duration: number, start: number) => {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        
+
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, start);
-        
+
         gain.gain.setValueAtTime(0.5, start);
         gain.gain.exponentialRampToValueAtTime(0.001, start + duration - 0.05);
-        
+
         osc.connect(gain);
         gain.connect(audioCtx.destination);
-        
+
         osc.start(start);
         osc.stop(start + duration);
       };
-      
+
       const now = audioCtx.currentTime;
       if (type === 'work') {
         playTone(523.25, 0.4, now); // C5
@@ -169,7 +169,7 @@ function App() {
   // Render Viewport Section Selection
   const renderSection = () => {
     if (!user) return null;
-    
+
     switch (activeSection) {
       case 'dashboard':
         return <Dashboard user={user} navigate={setActiveSection} showToast={showToast} />;
@@ -215,7 +215,7 @@ function App() {
             setShowProfileModal(true);
           }
         }} showToast={showToast} />
-        
+
         {/* Render Toast notifications */}
         <div className="toast-container">
           {toasts.map(t => (
@@ -235,14 +235,14 @@ function App() {
 
   return (
     <div className="app-container">
-      
+
       {/* Sidebar Nav */}
       <aside className={`sidebar ${sidebarOpen ? '' : 'hidden'}`}>
         <div className="sidebar-brand">
           <div className="brand-logo"><i className="fa-solid fa-graduation-cap"></i></div>
           <span className="brand-name">Study Tracker</span>
         </div>
-        
+
         <nav className="sidebar-menu">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
@@ -270,15 +270,15 @@ function App() {
             </div>
           ))}
         </nav>
-        
+
         <div className="sidebar-user">
           <div className="user-avatar">{user.name.charAt(0).toUpperCase()}</div>
           <div className="user-details">
             <div className="user-name">{user.name}</div>
             <div className="user-goal">Goal: {user.daily_goal_minutes}m/day</div>
           </div>
-          <button 
-            className="profile-edit-btn" 
+          <button
+            className="profile-edit-btn"
             title="Edit Profile"
             onClick={() => {
               setForceSetup(false);
@@ -292,7 +292,7 @@ function App() {
 
       {/* Main viewport area */}
       <main className="main-layout">
-        
+
         {/* Header */}
         <header className="top-bar">
           <div className="top-bar-left">
@@ -331,35 +331,35 @@ function App() {
           <form className="modal-form" onSubmit={handleProfileSave}>
             <div className="form-group">
               <label htmlFor="p-name">Display Name</label>
-              <input 
-                type="text" 
-                id="p-name" 
-                value={pName} 
-                onChange={(e) => setPName(e.target.value)} 
-                placeholder="Enter your name" 
-                required 
+              <input
+                type="text"
+                id="p-name"
+                value={pName}
+                onChange={(e) => setPName(e.target.value)}
+                placeholder="Enter your name"
+                required
               />
             </div>
             <div className="form-group">
               <label htmlFor="p-goal">Daily Study Goal (in hours)</label>
-              <input 
-                type="number" 
-                id="p-goal" 
-                value={pGoal} 
-                onChange={(e) => setPGoal(parseFloat(e.target.value))} 
-                min="0.1" 
+              <input
+                type="number"
+                id="p-goal"
+                value={pGoal}
+                onChange={(e) => setPGoal(parseFloat(e.target.value))}
+                min="0.1"
                 max="24"
-                step="0.1" 
-                placeholder="e.g. 2" 
-                required 
+                step="0.1"
+                placeholder="e.g. 2"
+                required
               />
             </div>
             <div className="form-group">
               <label htmlFor="p-timezone">Timezone</label>
-              <select 
-                id="p-timezone" 
-                value={pTimezone} 
-                onChange={(e) => setPTimezone(e.target.value)} 
+              <select
+                id="p-timezone"
+                value={pTimezone}
+                onChange={(e) => setPTimezone(e.target.value)}
                 required
               >
                 <option value="UTC">UTC (Coordinated Universal Time)</option>
