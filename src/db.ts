@@ -1450,7 +1450,7 @@ export const db = {
       `INSERT INTO topics (id, user_id, date, title, subject, est_minutes, priority, status, carried_over_from, order_index)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         date = excluded.date, title = excluded.title, subject = excluded.subject,
+         user_id = excluded.user_id, date = excluded.date, title = excluded.title, subject = excluded.subject,
          est_minutes = excluded.est_minutes, priority = excluded.priority,
          status = excluded.status, order_index = excluded.order_index`,
       [topic.id, topic.user_id, targetDate, targetTitle, targetSubject, targetEst, targetPriority, targetStatus, topic.carried_over_from || null, topic.order_index || 0]
@@ -1463,7 +1463,7 @@ export const db = {
       `INSERT INTO notes (id, user_id, title, subject, body, linked_topic_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         title = excluded.title, subject = excluded.subject, body = excluded.body,
+         user_id = excluded.user_id, title = excluded.title, subject = excluded.subject, body = excluded.body,
          linked_topic_id = excluded.linked_topic_id, updated_at = excluded.updated_at`,
       [note.id, note.user_id, note.title, note.subject, note.body, note.linked_topic_id || null, note.created_at, note.updated_at]
     );
@@ -1475,7 +1475,7 @@ export const db = {
       `INSERT INTO habits (id, user_id, name, target_days, auto_linked, target_value)
        VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name, target_days = excluded.target_days,
+         user_id = excluded.user_id, name = excluded.name, target_days = excluded.target_days,
          auto_linked = excluded.auto_linked, target_value = excluded.target_value`,
       [habit.id, habit.user_id, habit.name, habit.target_days, habit.auto_linked || 'none', habit.target_value || 0]
     );
@@ -1487,7 +1487,7 @@ export const db = {
       `INSERT INTO projects (id, user_id, name, description, status, start_date, target_date)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name, description = excluded.description,
+         user_id = excluded.user_id, name = excluded.name, description = excluded.description,
          status = excluded.status, start_date = excluded.start_date, target_date = excluded.target_date`,
       [project.id, project.user_id, project.name, project.description, project.status, project.start_date, project.target_date]
     );
@@ -1499,7 +1499,7 @@ export const db = {
       `INSERT INTO dsa_problems (id, user_id, title, platform, url, pattern, difficulty, status, time_spent_minutes, date_solved, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         title = excluded.title, platform = excluded.platform, url = excluded.url,
+         user_id = excluded.user_id, title = excluded.title, platform = excluded.platform, url = excluded.url,
          pattern = excluded.pattern, difficulty = excluded.difficulty, status = excluded.status,
          time_spent_minutes = excluded.time_spent_minutes, date_solved = excluded.date_solved, notes = excluded.notes`,
       [prob.id, prob.user_id, prob.title, prob.platform, prob.url, prob.pattern, prob.difficulty, prob.status, prob.time_spent_minutes, prob.date_solved, prob.notes]
@@ -1512,7 +1512,7 @@ export const db = {
       `INSERT INTO timetable_blocks (id, user_id, day_of_week, start_time, end_time, subject, color, recurring, specific_date)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         day_of_week = excluded.day_of_week, start_time = excluded.start_time, end_time = excluded.end_time,
+         user_id = excluded.user_id, day_of_week = excluded.day_of_week, start_time = excluded.start_time, end_time = excluded.end_time,
          subject = excluded.subject, color = excluded.color, recurring = excluded.recurring, specific_date = excluded.specific_date`,
       [block.id, block.user_id, block.day_of_week, block.start_time, block.end_time, block.subject, block.color, block.recurring, block.specific_date]
     );
@@ -1524,7 +1524,7 @@ export const db = {
       `INSERT INTO focus_sessions (id, user_id, topic_id, subject, start_time, end_time, duration_minutes, type, note, scheduled_duration, actual_duration, saved_time, save_time_used, task_name)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         subject = excluded.subject, duration_minutes = excluded.duration_minutes, note = excluded.note`,
+         user_id = excluded.user_id, subject = excluded.subject, duration_minutes = excluded.duration_minutes, note = excluded.note`,
       [session.id, session.user_id, session.topic_id || null, session.subject, session.start_time, session.end_time, session.duration_minutes, session.type, session.note, session.scheduled_duration || 0, session.actual_duration || 0, session.saved_time || 0, session.save_time_used || 0, session.task_name || '']
     );
   }
