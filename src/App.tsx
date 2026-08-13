@@ -43,17 +43,27 @@ function App() {
   const [pGoal, setPGoal] = useState<number>(1);
   const [pTimezone, setPTimezone] = useState<string>('Asia/Calcutta');
   const [forceSetup, setForceSetup] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 992);
 
   const [syncState, setSyncState] = useState<{ status: string; pendingCount: number }>({
     status: 'synced',
     pendingCount: 0
   });
 
-  // Automatically adjust initial sidebar state for desktop vs mobile
+  // Handle window resize and initial desktop vs mobile state
   useEffect(() => {
-    if (window.innerWidth >= 992) {
-      setSidebarOpen(true);
-    }
+    const handleResize = () => {
+      const mobile = window.innerWidth < 992;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setSidebarOpen(true);
+      } else {
+        setSidebarOpen(false);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Check saved session
@@ -278,7 +288,7 @@ function App() {
     <div className="app-container">
       {/* Mobile Drawer Backdrop */}
       <div
-        className={`sidebar-backdrop ${sidebarOpen ? 'active' : ''}`}
+        className={`sidebar-backdrop ${isMobile && sidebarOpen ? 'active' : ''}`}
         onClick={() => setSidebarOpen(false)}
       />
 

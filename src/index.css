@@ -89,6 +89,15 @@ body {
   pointer-events: auto;
 }
 
+@media (min-width: 992px) {
+  .sidebar-backdrop,
+  .sidebar-backdrop.active {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
 /* Sidebar Styling (Mobile-First Off-Canvas Drawer) */
 .sidebar {
   position: fixed;
