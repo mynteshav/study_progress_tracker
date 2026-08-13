@@ -198,8 +198,7 @@ export const webAdapter: IDatabaseAdapter = {
       const whereMatch = trimmed.match(/WHERE\s+([\s\S]+?)(?=\s+GROUP\s+BY|\s+ORDER\s+BY|\s+LIMIT|$)/i);
       if (whereMatch) {
         const whereClause = whereMatch[1].trim();
-        const paramOffset = { idx: 0 };
-        rows = rows.filter(row => matchesCondition(row, whereClause, params, paramOffset));
+        rows = rows.filter(row => matchesCondition(row, whereClause, params, { idx: 0 }));
       }
 
       if (selectColsStr.toUpperCase().includes('COUNT(') || selectColsStr.toUpperCase().includes('SUM(') || selectColsStr.toUpperCase().includes('MAX(') || selectColsStr.toUpperCase().includes('AVG(')) {
@@ -391,8 +390,7 @@ export const webAdapter: IDatabaseAdapter = {
       if (!whereClause) {
         dbData.tables[tableName] = [];
       } else {
-        const paramOffset = { idx: 0 };
-        dbData.tables[tableName] = rows.filter(row => !matchesCondition(row, whereClause, params, paramOffset));
+        dbData.tables[tableName] = rows.filter(row => !matchesCondition(row, whereClause, params, { idx: 0 }));
       }
 
       saveDb();
