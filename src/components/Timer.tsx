@@ -29,6 +29,54 @@ function Timer({ user, showToast }: TimerProps) {
   const [useMinutesInput, setUseMinutesInput] = useState<number>(15);
   const [isCelebrating, setIsCelebrating] = useState<boolean>(false);
 
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  const enterFullscreen = async () => {
+    setIsFullscreen(true);
+    if (document.documentElement.requestFullscreen) {
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch (err) {
+        console.log('Browser Fullscreen API unavailable, using fallback overlay:', err);
+      }
+    }
+  };
+
+  const exitFullscreen = async () => {
+    setIsFullscreen(false);
+    if (document.fullscreenElement && document.exitFullscreen) {
+      try {
+        await document.exitFullscreen();
+      } catch (err) {
+        console.log('Error exiting browser fullscreen:', err);
+      }
+    }
+  };
+
+  // Keyboard (Escape key) & Fullscreen API change listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        exitFullscreen();
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, [isFullscreen]);
+
   useEffect(() => {
     setWorkInput(timerState.workMinutes);
     setBreakInput(timerState.breakMinutes);
@@ -195,10 +243,117 @@ function Timer({ user, showToast }: TimerProps) {
         </div>
       )}
 
+      {/* DEDICATED FULLSCREEN TIMER OVERLAY */}
+      {isFullscreen && (
+        <div className="timer-fullscreen-overlay">
+          <button
+            className="fullscreen-exit-top"
+            onClick={exitFullscreen}
+            aria-label="Exit fullscreen timer"
+            title="Exit Fullscreen (Esc)"
+          >
+            <i className="fa-solid fa-xmark"></i> Exit Fullscreen
+          </button>
+
+          <div className="fullscreen-timer-content">
+            <div className="fullscreen-subject-badge">
+              <i className="fa-solid fa-book-open"></i> {subjectText || 'General Study'}
+            </div>
+
+            <div className="fullscreen-timer-circle">
+              <svg viewBox="0 0 250 250">
+                <circle stroke="rgba(255,255,255,0.03)" strokeWidth="12" fill="transparent" r="110" cx="125" cy="125" />
+                <circle
+                  className="timer-ring-circle"
+                  stroke={timerState.isWorkMode ? '#8b5cf6' : '#10b981'}
+                  strokeWidth="12"
+                  strokeDasharray="691.15"
+                  strokeDashoffset={ringOffset}
+                  strokeLinecap="round"
+                  fill="transparent"
+                  r="110"
+                  cx="125"
+                  cy="125"
+                />
+              </svg>
+              <div className="timer-display">
+                <div className="fullscreen-timer-digits">{formatDigits()}</div>
+                <div className="fullscreen-timer-mode">{timerState.isWorkMode ? 'Work Session' : 'Break Time'}</div>
+              </div>
+            </div>
+
+            <div className="timer-controls" style={{ flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '16px' }}>
+              <button className="btn btn-secondary btn-circle" onClick={resetTimer} title="Reset Timer" aria-label="Reset timer">
+                <i className="fa-solid fa-rotate-right"></i>
+              </button>
+              <button
+                className="btn btn-primary btn-circle"
+                onClick={toggleTimer}
+                style={{ width: '76px', height: '76px', fontSize: '1.8rem' }}
+                title={timerState.isRunning ? 'Pause' : 'Start'}
+                aria-label={timerState.isRunning ? 'Pause timer' : 'Start timer'}
+              >
+                <i className={`fa-solid ${timerState.isRunning ? 'fa-pause' : 'fa-play'}`}></i>
+              </button>
+              <button className="btn btn-secondary btn-circle" onClick={skipSession} title="Next Session" aria-label="Next session">
+                <i className="fa-solid fa-forward"></i>
+              </button>
+              <button
+                className={`btn ${timerState.sessionSaved ? 'btn-secondary' : 'btn-success'}`}
+                onClick={handleSaveTimerClick}
+                disabled={!isSessionActiveOrCompleted && !timerState.sessionSaved}
+                aria-label="Save timer session"
+                style={{
+                  height: '50px',
+                  padding: '0 20px',
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                  borderRadius: '25px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <i className="fa-solid fa-bookmark"></i>
+                <span>{timerState.sessionSaved ? 'Saved' : 'Save Session'}</span>
+              </button>
+            </div>
+
+            <div className="fullscreen-progress-info">
+              <i className="fa-solid fa-chart-pie" style={{ color: '#818cf8' }}></i>
+              <span>Today's Progress: <strong>{formatTimeDisplay(todayFocusedMinutes)}</strong></span>
+            </div>
+
+            <button
+              className="btn btn-secondary"
+              onClick={exitFullscreen}
+              aria-label="Exit fullscreen timer"
+              style={{ marginTop: '12px', minWidth: '160px' }}
+            >
+              <i className="fa-solid fa-compress"></i> Exit Fullscreen
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top row: Timer & Settings */}
       <div className="grid-2">
         {/* Left: Interactive circular countdown */}
         <div className="glass-panel timer-container" style={{ position: 'relative' }}>
+          {/* Header row with Fullscreen button */}
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <span style={{ fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)' }}>Focus Timer</span>
+            <button
+              className="btn btn-secondary"
+              onClick={enterFullscreen}
+              aria-label="Enter fullscreen timer"
+              title="Enter Fullscreen"
+              style={{ padding: '6px 14px', fontSize: '0.85rem', minHeight: '38px' }}
+            >
+              <i className="fa-solid fa-expand"></i> Fullscreen
+            </button>
+          </div>
+
           <div className="timer-circle-wrapper">
             <svg width="250" height="250">
               <circle stroke="rgba(255,255,255,0.03)" strokeWidth="12" fill="transparent" r="110" cx="125" cy="125" />

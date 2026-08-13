@@ -34,7 +34,7 @@ export interface ToastMessage {
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [activeSection, setActiveSection] = useState<string>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
 
@@ -48,6 +48,13 @@ function App() {
     status: 'synced',
     pendingCount: 0
   });
+
+  // Automatically adjust initial sidebar state for desktop vs mobile
+  useEffect(() => {
+    if (window.innerWidth >= 992) {
+      setSidebarOpen(true);
+    }
+  }, []);
 
   // Check saved session
   useEffect(() => {
@@ -231,7 +238,7 @@ function App() {
   };
 
   const getLocalDateHeaderStr = () => {
-    const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' };
     return new Date().toLocaleDateString('en-US', options);
   };
 
@@ -269,12 +276,20 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* Mobile Drawer Backdrop */}
+      <div
+        className={`sidebar-backdrop ${sidebarOpen ? 'active' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
 
       {/* Sidebar Nav */}
-      <aside className={`sidebar ${sidebarOpen ? '' : 'hidden'}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <div className="brand-logo"><i className="fa-solid fa-graduation-cap"></i></div>
           <span className="brand-name">Study Tracker</span>
+          <button className="sidebar-close-btn" onClick={() => setSidebarOpen(false)}>
+            <i className="fa-solid fa-xmark"></i>
+          </button>
         </div>
 
         <nav className="sidebar-menu">
@@ -293,7 +308,12 @@ function App() {
             <div
               key={item.id}
               className={`menu-item ${activeSection === item.id ? 'active' : ''}`}
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => {
+                setActiveSection(item.id);
+                if (window.innerWidth < 992) {
+                  setSidebarOpen(false);
+                }
+              }}
             >
               {item.isLucide ? (
                 <Map size={18} style={{ marginRight: '8px' }} />
@@ -317,6 +337,7 @@ function App() {
             onClick={() => {
               setForceSetup(false);
               setShowProfileModal(true);
+              if (window.innerWidth < 992) setSidebarOpen(false);
             }}
           >
             <i className="fa-solid fa-gear"></i>
@@ -330,7 +351,7 @@ function App() {
         {/* Header */}
         <header className="top-bar">
           <div className="top-bar-left">
-            <button className="sidebar-toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <button className="sidebar-toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle menu">
               <i className="fa-solid fa-bars"></i>
             </button>
             <h1 className="page-title">{formatTitle(activeSection)}</h1>
@@ -341,7 +362,7 @@ function App() {
 
             {/* Cloud Sync Status Indicator */}
             <div
-              className="sync-status-pill"
+              className={`sync-status-pill sync-${syncState.status}`}
               title={
                 syncState.status === 'synced'
                   ? 'All changes synchronized with Cloud'
@@ -351,34 +372,6 @@ function App() {
                   ? `${syncState.pendingCount} changes waiting to sync`
                   : 'Offline mode: Changes saved to local database'
               }
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '5px 12px',
-                borderRadius: '20px',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                background:
-                  syncState.status === 'synced'
-                    ? 'rgba(16, 185, 129, 0.15)'
-                    : syncState.status === 'syncing'
-                    ? 'rgba(99, 102, 241, 0.15)'
-                    : 'rgba(245, 158, 11, 0.15)',
-                color:
-                  syncState.status === 'synced'
-                    ? '#10b981'
-                    : syncState.status === 'syncing'
-                    ? '#818cf8'
-                    : '#f59e0b',
-                border:
-                  syncState.status === 'synced'
-                    ? '1px solid rgba(16, 185, 129, 0.3)'
-                    : syncState.status === 'syncing'
-                    ? '1px solid rgba(99, 102, 241, 0.3)'
-                    : '1px solid rgba(245, 158, 11, 0.3)',
-                marginRight: '12px'
-              }}
             >
               <i
                 className={`fa-solid ${
@@ -391,7 +384,7 @@ function App() {
                     : 'fa-cloud-slash'
                 }`}
               ></i>
-              <span>
+              <span className="sync-status-text">
                 {syncState.status === 'synced'
                   ? 'Synced'
                   : syncState.status === 'syncing'
