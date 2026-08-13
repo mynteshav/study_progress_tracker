@@ -24,6 +24,7 @@ type DataChangeListener = (entityType: string) => void;
 
 const SYNCED_ENTITIES = [
   'topics',
+  'tasks',
   'focus_sessions',
   'dsa_problems',
   'projects',
@@ -228,7 +229,7 @@ class SyncServiceManager {
       delete record.synced_at;
 
       // Upsert into local database using ON CONFLICT handling
-      if (entityType === 'topics') {
+      if (entityType === 'topics' || entityType === 'tasks') {
         await db.saveRemoteTopic?.(record);
       } else if (entityType === 'notes') {
         await db.saveRemoteNote?.(record);
@@ -257,7 +258,8 @@ class SyncServiceManager {
     try {
       const numericId = Number(docId);
       const targetId = isNaN(numericId) ? docId : numericId;
-      await db.genericDelete?.(entityType, targetId);
+      const targetTable = entityType === 'tasks' ? 'topics' : entityType;
+      await db.genericDelete?.(targetTable, targetId);
     } catch (err) {
       console.warn(`[SyncService] Remote delete error on ${entityType}:`, err);
     }

@@ -142,7 +142,7 @@ export const db = {
 
     try {
       const { SyncService } = await import('./services/SyncService');
-      SyncService.queueChange('topics', res.id, 'CREATE', {
+      const topicPayload = {
         id: res.id,
         user_id: userId,
         date,
@@ -152,7 +152,9 @@ export const db = {
         priority,
         status,
         order_index: nextOrder
-      });
+      };
+      SyncService.queueChange('topics', res.id, 'CREATE', topicPayload);
+      SyncService.queueChange('tasks', res.id, 'CREATE', topicPayload);
     } catch (e) {}
 
     return res;
@@ -179,6 +181,7 @@ export const db = {
       const updated = await get('SELECT * FROM topics WHERE id = ?', [id]);
       if (updated) {
         SyncService.queueChange('topics', id, 'UPDATE', updated);
+        SyncService.queueChange('tasks', id, 'UPDATE', updated);
       }
     } catch (e) {}
 
@@ -190,6 +193,7 @@ export const db = {
     try {
       const { SyncService } = await import('./services/SyncService');
       SyncService.queueChange('topics', id, 'DELETE', { id });
+      SyncService.queueChange('tasks', id, 'DELETE', { id });
     } catch (e) {}
     return res;
   },
@@ -1434,6 +1438,14 @@ export const db = {
 
   async saveRemoteTopic(topic: any) {
     if (!topic || !topic.id) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDate = topic.date || todayStr;
+    const targetTitle = (topic.title || topic.name || topic.task_name || 'New Task').toString().trim();
+    const targetSubject = (topic.subject || 'General').toString().trim();
+    const targetEst = topic.est_minutes || topic.estMinutes || 0;
+    const targetPriority = topic.priority || 'med';
+    const targetStatus = topic.status || (topic.completed ? 'done' : 'not started');
+
     return run(
       `INSERT INTO topics (id, user_id, date, title, subject, est_minutes, priority, status, carried_over_from, order_index)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1441,7 +1453,7 @@ export const db = {
          date = excluded.date, title = excluded.title, subject = excluded.subject,
          est_minutes = excluded.est_minutes, priority = excluded.priority,
          status = excluded.status, order_index = excluded.order_index`,
-      [topic.id, topic.user_id, topic.date, topic.title, topic.subject, topic.est_minutes, topic.priority, topic.status, topic.carried_over_from || null, topic.order_index || 0]
+      [topic.id, topic.user_id, targetDate, targetTitle, targetSubject, targetEst, targetPriority, targetStatus, topic.carried_over_from || null, topic.order_index || 0]
     );
   },
 
