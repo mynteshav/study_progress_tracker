@@ -4,13 +4,10 @@ import {
   doc,
   setDoc,
   getDocs,
-  deleteDoc,
   onSnapshot,
-  query,
-  Unsubscribe,
-  serverTimestamp
+  Unsubscribe
 } from 'firebase/firestore';
-import { auth } from '../utils/firebase';
+import { auth, onFirebaseAuthStateChanged } from '../utils/firebase';
 import { db } from '../db';
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'pending';
@@ -67,7 +64,25 @@ class SyncServiceManager {
         console.log('[SyncService] Network offline.');
         this.updateState({ status: 'offline' });
       });
+
+      // Automatically listen to Firebase Auth state changes
+      try {
+        onFirebaseAuthStateChanged((user) => {
+          if (user && user.uid) {
+            console.log('[SyncService] Auth state changed. Active UID:', user.uid);
+            this.init(user.uid);
+          } else if (!user && this.activeUid) {
+            this.cleanup();
+          }
+        });
+      } catch (err) {
+        console.warn('[SyncService] Failed to bind auth state listener:', err);
+      }
     }
+  }
+
+  public getActiveUid(): string | null {
+    return this.activeUid || auth.currentUser?.uid || null;
   }
 
   /**
@@ -92,29 +107,49 @@ class SyncServiceManager {
     this.statusListeners.forEach((l) => l(this.state));
   }
 
-  private notifyDataChange(entityType: string) {
+  public notifyDataChange(entityType: string) {
     this.dataChangeListeners.forEach((l) => l(entityType));
   }
 
   /**
    * Initialize synchronization for the logged-in Firebase user.
    */
-  public async init(firebaseUid: string) {
-    if (!firebaseUid) return;
-    if (this.activeUid === firebaseUid) return;
+  public async init(inputUid?: string) {
+    let resolvedUid = auth.currentUser?.uid || inputUid;
+
+    // If inputUid is a local numeric SQLite ID (e.g. "1"), resolve actual firebase_uid from DB
+    if (!resolvedUid || !isNaN(Number(resolvedUid))) {
+      if (inputUid) {
+        try {
+          const userRec = await db.getUserById(Number(inputUid));
+          if (userRec && userRec.firebase_uid) {
+            resolvedUid = userRec.firebase_uid;
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (!resolvedUid) {
+      console.warn('[SyncService] Unable to resolve valid Firebase UID for sync initialization.');
+      return;
+    }
+
+    if (this.activeUid === resolvedUid && this.unsubscribers.length > 0) {
+      return;
+    }
 
     this.cleanup();
-    this.activeUid = firebaseUid;
-    console.log(`[SyncService] Initializing sync for UID: ${firebaseUid}`);
+    this.activeUid = resolvedUid;
+    console.log(`[SyncService] Successfully initialized sync for Firebase UID: ${resolvedUid}`);
 
     this.updateState({ status: 'syncing' });
 
     try {
-      // 1. Initial Migration & Merge
-      await this.performInitialSync(firebaseUid);
+      // 1. Initial Migration & Merge from Firestore to local DB
+      await this.performInitialSync(resolvedUid);
 
       // 2. Attach Real-time Listeners
-      this.attachListeners(firebaseUid);
+      this.attachListeners(resolvedUid);
 
       // 3. Process any pending local changes
       await this.processQueue();
@@ -123,6 +158,9 @@ class SyncServiceManager {
         status: navigator.onLine ? 'synced' : 'offline',
         lastSyncedAt: new Date().toISOString()
       });
+
+      // Notify UI after initial sync finishes
+      this.notifyDataChange('all');
     } catch (err: any) {
       console.error('[SyncService] Init failed:', err);
       this.updateState({
@@ -234,8 +272,11 @@ class SyncServiceManager {
     operation: 'CREATE' | 'UPDATE' | 'DELETE',
     payload: any = {}
   ) {
-    const uid = this.activeUid || auth.currentUser?.uid;
-    if (!uid) return;
+    const uid = this.getActiveUid();
+    if (!uid) {
+      console.warn('[SyncService] Cannot queue change: No active Firebase UID.');
+      return;
+    }
 
     const payloadStr = JSON.stringify({
       ...payload,
@@ -249,7 +290,7 @@ class SyncServiceManager {
       this.processQueue();
     } catch (err) {
       console.warn('[SyncService] Failed to queue change locally:', err);
-      // Directly attempt Firestore write if queue failed
+      // Directly attempt Firestore write if local queue failed
       this.directFirestoreWrite(uid, entityType, String(entityId), operation, payload);
     }
   }
@@ -290,7 +331,7 @@ class SyncServiceManager {
    */
   public async processQueue() {
     if (this.isProcessingQueue || !navigator.onLine) return;
-    const uid = this.activeUid || auth.currentUser?.uid;
+    const uid = this.getActiveUid();
     if (!uid) return;
 
     this.isProcessingQueue = true;

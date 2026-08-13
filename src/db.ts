@@ -260,6 +260,26 @@ export const db = {
       [userId, topicId, subject.trim(), startTime, endTime, durationMinutes, type, note, finalScheduled, finalActual, savedTime, saveTimeUsed, finalTaskName]
     );
     
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('focus_sessions', result.id, 'CREATE', {
+        id: result.id,
+        user_id: userId,
+        topic_id: topicId,
+        subject: subject.trim(),
+        start_time: startTime,
+        end_time: endTime,
+        duration_minutes: durationMinutes,
+        type,
+        note,
+        scheduled_duration: finalScheduled,
+        actual_duration: finalActual,
+        saved_time: savedTime,
+        save_time_used: saveTimeUsed,
+        task_name: finalTaskName
+      });
+    } catch (e) {}
+
     if (savedTime > 0) {
       await this.updateSavedTimeStats(userId, savedTime);
     }
@@ -386,17 +406,36 @@ export const db = {
   },
   
   async addDsaProblem(userId: number, p: { title: string; platform: string; url?: string; pattern: string; difficulty: string; status: string; time_spent_minutes: number; date_solved: string; notes?: string }) {
-    return run(
+    const res = await run(
       `INSERT INTO dsa_problems (user_id, title, platform, url, pattern, difficulty, status, time_spent_minutes, date_solved, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [userId, p.title.trim(), p.platform.trim(), p.url || null, p.pattern.trim(), p.difficulty, p.status, p.time_spent_minutes, p.date_solved, p.notes || '']
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('dsa_problems', res.id, 'CREATE', {
+        id: res.id,
+        user_id: userId,
+        title: p.title.trim(),
+        platform: p.platform.trim(),
+        url: p.url || null,
+        pattern: p.pattern.trim(),
+        difficulty: p.difficulty,
+        status: p.status,
+        time_spent_minutes: p.time_spent_minutes,
+        date_solved: p.date_solved,
+        notes: p.notes || ''
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async updateDsaProblem(id: number, fields: any) {
     const prob = await get('SELECT * FROM dsa_problems WHERE id = ?', [id]) as any;
     if (!prob) throw new Error('Problem not found');
-    return run(
+    const res = await run(
       `UPDATE dsa_problems SET title = ?, platform = ?, url = ?, pattern = ?, difficulty = ?, status = ?,
                              time_spent_minutes = ?, date_solved = ?, notes = ? WHERE id = ?`,
       [
@@ -412,10 +451,25 @@ export const db = {
         id
       ]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      const updated = await get('SELECT * FROM dsa_problems WHERE id = ?', [id]);
+      if (updated) {
+        SyncService.queueChange('dsa_problems', id, 'UPDATE', updated);
+      }
+    } catch (e) {}
+
+    return res;
   },
   
   async deleteDsaProblem(id: number) {
-    return run('DELETE FROM dsa_problems WHERE id = ?', [id]);
+    const res = await run('DELETE FROM dsa_problems WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('dsa_problems', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Projects
@@ -431,17 +485,32 @@ export const db = {
   },
   
   async addProject(userId: number, p: { name: string; description?: string; status: string; start_date?: string; target_date?: string }) {
-    return run(
+    const res = await run(
       `INSERT INTO projects (user_id, name, description, status, start_date, target_date)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [userId, p.name.trim(), p.description || '', p.status, p.start_date || null, p.target_date || null]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('projects', res.id, 'CREATE', {
+        id: res.id,
+        user_id: userId,
+        name: p.name.trim(),
+        description: p.description || '',
+        status: p.status,
+        start_date: p.start_date || null,
+        target_date: p.target_date || null
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async updateProject(id: number, fields: any) {
     const proj = await get('SELECT * FROM projects WHERE id = ?', [id]) as any;
     if (!proj) throw new Error('Project not found');
-    return run(
+    const res = await run(
       `UPDATE projects SET name = ?, description = ?, status = ?, start_date = ?, target_date = ? WHERE id = ?`,
       [
         fields.name !== undefined ? fields.name.trim() : proj.name,
@@ -452,17 +521,45 @@ export const db = {
         id
       ]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      const updated = await get('SELECT * FROM projects WHERE id = ?', [id]);
+      if (updated) {
+        SyncService.queueChange('projects', id, 'UPDATE', updated);
+      }
+    } catch (e) {}
+
+    return res;
   },
   
   async deleteProject(id: number) {
-    return run('DELETE FROM projects WHERE id = ?', [id]);
+    const res = await run('DELETE FROM projects WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('projects', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
   
   async addProjectTask(projectId: number, title: string, dueDate: string) {
-    return run(
+    const res = await run(
       'INSERT INTO project_tasks (project_id, title, done, due_date) VALUES (?, ?, 0, ?)',
       [projectId, title.trim(), dueDate || null]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('project_tasks', res.id, 'CREATE', {
+        id: res.id,
+        project_id: projectId,
+        title: title.trim(),
+        done: 0,
+        due_date: dueDate || null
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async updateProjectTask(taskId: number, fields: { title?: string; done?: boolean; due_date?: string }) {

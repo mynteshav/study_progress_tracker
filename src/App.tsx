@@ -69,6 +69,8 @@ function App() {
     }
   }, []);
 
+  const [syncRefreshKey, setSyncRefreshKey] = useState<number>(0);
+
   // Synchronize TimerService & SyncService lifecycle with user session
   useEffect(() => {
     if (user) {
@@ -85,9 +87,9 @@ function App() {
           setSyncState({ status: st.status, pendingCount: st.pendingCount });
         });
 
-        const unsubData = SyncService.subscribeDataChange(() => {
-          // Trigger light refresh of current section when remote data arrives
-          setActiveSection((prev) => prev);
+        const unsubData = SyncService.subscribeDataChange((entity) => {
+          console.log(`[App] Data change notification received (${entity}). Incrementing syncRefreshKey.`);
+          setSyncRefreshKey((k) => k + 1);
         });
 
         return () => {
@@ -155,10 +157,10 @@ function App() {
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setShowProfileModal(false);
-      setForceSetup(false);
       showToast('Profile updated successfully!', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to save profile', 'error');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update profile', 'error');
     }
   };
 
@@ -203,25 +205,25 @@ function App() {
 
     switch (activeSection) {
       case 'dashboard':
-        return <Dashboard user={user} navigate={setActiveSection} showToast={showToast} />;
+        return <Dashboard key={syncRefreshKey} user={user} navigate={setActiveSection} showToast={showToast} />;
       case 'topics':
-        return <Topics user={user} showToast={showToast} />;
+        return <Topics key={syncRefreshKey} user={user} showToast={showToast} />;
       case 'timer':
-        return <Timer user={user} showToast={showToast} playBell={playBellAlert} />;
+        return <Timer key={syncRefreshKey} user={user} showToast={showToast} playBell={playBellAlert} />;
       case 'dsa':
-        return <Dsa user={user} showToast={showToast} />;
+        return <Dsa key={syncRefreshKey} user={user} showToast={showToast} />;
       case 'projects':
-        return <Projects user={user} showToast={showToast} />;
+        return <Projects key={syncRefreshKey} user={user} showToast={showToast} />;
       case 'timetable':
-        return <Timetable user={user} showToast={showToast} />;
+        return <Timetable key={syncRefreshKey} user={user} showToast={showToast} />;
       case 'habits':
-        return <Habits user={user} showToast={showToast} />;
+        return <Habits key={syncRefreshKey} user={user} showToast={showToast} />;
       case 'notes':
-        return <NotesCards user={user} showToast={showToast} />;
+        return <NotesCards key={syncRefreshKey} user={user} showToast={showToast} />;
       case 'roadmap':
-        return <Roadmap user={user} navigate={setActiveSection} showToast={showToast} />;
+        return <Roadmap key={syncRefreshKey} user={user} navigate={setActiveSection} showToast={showToast} />;
       case 'analytics':
-        return <Analytics user={user} showToast={showToast} />;
+        return <Analytics key={syncRefreshKey} user={user} showToast={showToast} />;
       default:
         return <div className="glass-panel"><h3>View not found</h3></div>;
     }
