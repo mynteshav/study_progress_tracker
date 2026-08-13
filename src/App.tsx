@@ -13,6 +13,7 @@ import Analytics from './components/Analytics';
 import Roadmap from './components/Roadmap';
 import { Map } from 'lucide-react';
 import { TimerService } from './services/TimerService';
+import InstallPWAButton from './components/InstallPWAButton';
 
 export interface User {
   id: number;
@@ -335,6 +336,9 @@ function App() {
             <h1 className="page-title">{formatTitle(activeSection)}</h1>
           </div>
           <div className="top-bar-right">
+            {/* Install PWA Button */}
+            <InstallPWAButton showToast={showToast} />
+
             {/* Cloud Sync Status Indicator */}
             <div
               className="sync-status-pill"

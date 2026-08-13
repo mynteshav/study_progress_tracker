@@ -6,6 +6,7 @@ import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
 
 import { signUpWithFirebase, loginWithFirebase } from '../utils/firebase';
+import InstallPWAButton from './InstallPWAButton';
 
 interface AuthProps {
   setUser: (user: User) => void;
@@ -300,6 +301,10 @@ function Auth({ setUser, showToast }: AuthProps) {
           >
             {isLogin ? 'Sign Up' : 'Log In'}
           </a>
+        </div>
+
+        <div style={{ marginTop: '16px', textAlign: 'center' }}>
+          <InstallPWAButton showToast={showToast} />
         </div>
       </div>
     </div>
