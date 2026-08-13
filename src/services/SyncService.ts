@@ -83,7 +83,11 @@ class SyncServiceManager {
   }
 
   public getActiveUid(): string | null {
-    return this.activeUid || auth.currentUser?.uid || null;
+    const uid = auth.currentUser?.uid || this.activeUid;
+    if (uid && isNaN(Number(uid))) {
+      return uid;
+    }
+    return null;
   }
 
   /**
@@ -130,7 +134,7 @@ class SyncServiceManager {
       }
     }
 
-    if (!resolvedUid) {
+    if (!resolvedUid || !isNaN(Number(resolvedUid))) {
       console.warn('[SyncService] Unable to resolve valid Firebase UID for sync initialization.');
       return;
     }
@@ -217,11 +221,12 @@ class SyncServiceManager {
    * Apply remote document insertion/update into local DB safely.
    */
   private async applyRemoteUpsert(entityType: string, docId: string, data: any) {
-    if (!this.activeUid) return;
+    const uid = this.getActiveUid();
+    if (!uid) return;
 
     try {
       // Find local user ID corresponding to active Firebase UID
-      const user = await db.getUserByFirebaseUid(this.activeUid);
+      const user = await db.getUserByFirebaseUid(uid);
       const userId = user ? user.id : 1;
 
       const record = { ...data, id: isNaN(Number(docId)) ? docId : Number(docId), user_id: userId };
@@ -281,6 +286,7 @@ class SyncServiceManager {
     }
 
     const docId = String(entityId);
+    console.log(`[SyncService] CREATE TOPIC START -> Firebase UID: ${uid}, Doc ID: ${docId}, Entity: ${entityType}`);
     console.log(`[SyncService] FIRESTORE WRITE START -> users/${uid}/${entityType}/${docId}`);
 
     if (navigator.onLine && this.firestore) {
@@ -301,8 +307,8 @@ class SyncServiceManager {
         }
         console.log(`[SyncService] FIRESTORE WRITE SUCCESS -> users/${uid}/${entityType}/${docId}`);
       } catch (err: any) {
-        console.error(`[SyncService] FIRESTORE WRITE FAILED -> users/${uid}/${entityType}/${docId}:`, err);
-        throw new Error(`Firestore write failed: ${err.message || err}`);
+        console.error(`[SyncService] FIRESTORE WRITE FAILED -> users/${uid}/${entityType}/${docId} | Code: ${err.code || 'unknown'}, Message: ${err.message || err}`);
+        throw new Error(`Firestore write failed (${err.code || 'error'}): ${err.message || err}`);
       }
     }
 
