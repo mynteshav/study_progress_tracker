@@ -15,7 +15,7 @@ let dbData: DbStore = {
 
 let isInitialized = false;
 
-// Load stored DB from LocalStorage / IndexedDB
+// Load stored DB from LocalStorage
 function loadDb(): DbStore {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -62,6 +62,22 @@ function getNextId(tableName: string): number {
   return next;
 }
 
+/**
+ * Replace SQL '?' placeholders with safe literal representations of params.
+ * This prevents parameter index state corruption during condition evaluations.
+ */
+function substituteParams(sqlClause: string, params: any[]): string {
+  let paramIdx = 0;
+  return sqlClause.replace(/\?/g, () => {
+    if (paramIdx >= params.length) return 'NULL';
+    const val = params[paramIdx++];
+    if (val === null || val === undefined) return 'NULL';
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    const escaped = String(val).replace(/'/g, "''");
+    return `'${escaped}'`;
+  });
+}
+
 // SQL Helper methods for string & date functions in queries
 function evaluateExpr(row: any, exprStr: string): any {
   let expr = exprStr.trim();
@@ -85,35 +101,41 @@ function evaluateExpr(row: any, exprStr: string): any {
   return row[fieldName];
 }
 
-function matchesCondition(row: any, condStr: string, params: any[], paramOffset: { idx: number }): boolean {
+function matchesCondition(row: any, condStr: string): boolean {
   let cond = condStr.trim();
   if (!cond) return true;
 
   if (cond.toUpperCase().includes(' AND ')) {
     const parts = cond.split(/\s+AND\s+/i);
-    return parts.every(p => matchesCondition(row, p, params, paramOffset));
+    return parts.every((p) => matchesCondition(row, p));
+  }
+
+  if (cond.toUpperCase().includes(' OR ')) {
+    const parts = cond.split(/\s+OR\s+/i);
+    return parts.some((p) => matchesCondition(row, p));
   }
 
   if (/\bIS NOT NULL\b/i.test(cond)) {
     const field = cond.replace(/\bIS NOT NULL\b/i, '').trim();
     const val = evaluateExpr(row, field);
-    return val !== null && val !== undefined;
+    return val !== null && val !== undefined && val !== 'NULL';
   }
+
   if (/\bIS NULL\b/i.test(cond)) {
     const field = cond.replace(/\bIS NULL\b/i, '').trim();
     const val = evaluateExpr(row, field);
-    return val === null || val === undefined;
+    return val === null || val === undefined || val === 'NULL';
   }
 
   if (/\bLIKE\b/i.test(cond)) {
     const parts = cond.split(/\bLIKE\b/i);
     const val = String(evaluateExpr(row, parts[0]) || '').toLowerCase();
-    let expected = params[paramOffset.idx++];
-    if (typeof expected === 'string') {
-      expected = expected.replace(/%/g, '').toLowerCase();
-      return val.includes(expected);
+    let expected = parts[1].trim();
+    if (expected.startsWith("'") && expected.endsWith("'")) {
+      expected = expected.slice(1, -1);
     }
-    return false;
+    expected = expected.replace(/%/g, '').toLowerCase();
+    return val.includes(expected);
   }
 
   const opMatch = cond.match(/([a-zA-Z0-9_\.\(\)\s\',]+)\s*(=|!=|>|<|>=|<=)\s*(.*)/);
@@ -125,18 +147,21 @@ function matchesCondition(row: any, condStr: string, params: any[], paramOffset:
     const leftVal = evaluateExpr(row, leftExpr);
     let rightVal: any;
 
-    if (rightExpr === '?') {
-      rightVal = params[paramOffset.idx++];
-    } else if (rightExpr.startsWith("'") && rightExpr.endsWith("'")) {
+    if (rightExpr.startsWith("'") && rightExpr.endsWith("'")) {
       rightVal = rightExpr.slice(1, -1);
+    } else if (rightExpr.toUpperCase() === 'NULL') {
+      rightVal = null;
     } else if (!isNaN(Number(rightExpr))) {
       rightVal = Number(rightExpr);
     } else {
       rightVal = evaluateExpr(row, rightExpr);
     }
 
-    if (op === '=') return leftVal == rightVal;
-    if (op === '!=') return leftVal != rightVal;
+    const cleanLeft = leftVal !== null && leftVal !== undefined ? String(leftVal) : '';
+    const cleanRight = rightVal !== null && rightVal !== undefined ? String(rightVal) : '';
+
+    if (op === '=') return cleanLeft === cleanRight || String(leftVal) == String(rightVal);
+    if (op === '!=') return cleanLeft !== cleanRight;
     if (op === '>') return Number(leftVal) > Number(rightVal);
     if (op === '<') return Number(leftVal) < Number(rightVal);
     if (op === '>=') return Number(leftVal) >= Number(rightVal);
@@ -150,7 +175,7 @@ export const webAdapter: IDatabaseAdapter = {
   async initDb(): Promise<void> {
     if (isInitialized) return;
     dbData = loadDb();
-    
+
     for (const stmt of SCHEMA_STATEMENTS) {
       const match = stmt.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)/i);
       if (match) {
@@ -158,10 +183,10 @@ export const webAdapter: IDatabaseAdapter = {
         ensureTable(tableName);
       }
     }
-    
+
     saveDb();
     isInitialized = true;
-    console.log('[WebAdapter] In-memory IndexedDB/LocalStorage DB initialized.');
+    console.log('[WebAdapter] In-memory LocalStorage DB initialized.');
   },
 
   async query(sql: string, params: any[] = []): Promise<any[]> {
@@ -198,7 +223,8 @@ export const webAdapter: IDatabaseAdapter = {
       const whereMatch = trimmed.match(/WHERE\s+([\s\S]+?)(?=\s+GROUP\s+BY|\s+ORDER\s+BY|\s+LIMIT|$)/i);
       if (whereMatch) {
         const whereClause = whereMatch[1].trim();
-        rows = rows.filter(row => matchesCondition(row, whereClause, params, { idx: 0 }));
+        const substitutedWhere = substituteParams(whereClause, params);
+        rows = rows.filter((row) => matchesCondition(row, substitutedWhere));
       }
 
       if (selectColsStr.toUpperCase().includes('COUNT(') || selectColsStr.toUpperCase().includes('SUM(') || selectColsStr.toUpperCase().includes('MAX(') || selectColsStr.toUpperCase().includes('AVG(')) {
@@ -215,14 +241,14 @@ export const webAdapter: IDatabaseAdapter = {
               if (fn === 'COUNT') {
                 resRow[alias] = rows.length;
               } else if (fn === 'MAX') {
-                const vals = rows.map(r => Number(r[expr]) || 0);
+                const vals = rows.map((r) => Number(r[expr]) || 0);
                 resRow[alias] = vals.length > 0 ? Math.max(...vals) : 0;
               } else if (fn === 'SUM') {
                 if (expr.toUpperCase().startsWith('CASE')) {
                   let sum = 0;
                   for (const r of rows) {
                     if (expr.includes("status = 'done'") && r.status === 'done') sum += 1;
-                    else if (expr.includes("saved_time > 0") && r.saved_time > 0) sum += (r.saved_time || 0);
+                    else if (expr.includes('saved_time > 0') && r.saved_time > 0) sum += (r.saved_time || 0);
                   }
                   resRow[alias] = sum;
                 } else {
@@ -241,7 +267,7 @@ export const webAdapter: IDatabaseAdapter = {
 
       const orderMatch = trimmed.match(/ORDER\s+BY\s+([\s\S]+?)(?=\s+LIMIT|$)/i);
       if (orderMatch) {
-        const orderCols = orderMatch[1].split(',').map(s => s.trim());
+        const orderCols = orderMatch[1].split(',').map((s) => s.trim());
         rows.sort((a, b) => {
           for (const colDef of orderCols) {
             const parts = colDef.split(/\s+/);
@@ -284,7 +310,7 @@ export const webAdapter: IDatabaseAdapter = {
     const insertMatch = trimmed.match(/^INSERT\s+INTO\s+([a-zA-Z0-9_]+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
     if (insertMatch) {
       const tableName = insertMatch[1].toLowerCase().trim();
-      const cols = insertMatch[2].split(',').map(c => c.trim());
+      const cols = insertMatch[2].split(',').map((c) => c.trim());
       const rows = ensureTable(tableName);
 
       const newRow: any = {};
@@ -310,8 +336,8 @@ export const webAdapter: IDatabaseAdapter = {
       if (trimmed.toUpperCase().includes('ON CONFLICT')) {
         const conflictMatch = trimmed.match(/ON\s+CONFLICT\s*\(([^)]+)\)\s*DO\s+UPDATE\s+SET\s+(.+)/i);
         if (conflictMatch) {
-          const conflictCols = conflictMatch[1].split(',').map(c => c.trim().toLowerCase());
-          const existingIdx = rows.findIndex(r => conflictCols.every(col => r[col] == newRow[col]));
+          const conflictCols = conflictMatch[1].split(',').map((c) => c.trim().toLowerCase());
+          const existingIdx = rows.findIndex((r) => conflictCols.every((col) => r[col] == newRow[col]));
           if (existingIdx !== -1) {
             rows[existingIdx] = { ...rows[existingIdx], ...newRow };
             saveDb();
@@ -334,13 +360,16 @@ export const webAdapter: IDatabaseAdapter = {
       const rows = ensureTable(tableName);
       let updatedCount = 0;
 
-      const setItems = setClause.split(',').map(s => s.trim());
+      const setItems = setClause.split(',').map((s) => s.trim());
       const numSetParams = (setClause.match(/\?/g) || []).length;
+      const setParams = params.slice(0, numSetParams);
+      const whereParams = params.slice(numSetParams);
+
+      const substitutedWhere = whereClause ? substituteParams(whereClause, whereParams) : '';
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const tempParamOffset = { idx: numSetParams };
-        const matches = whereClause ? matchesCondition(row, whereClause, params, tempParamOffset) : true;
+        const matches = whereClause ? matchesCondition(row, substitutedWhere) : true;
 
         if (matches) {
           let itemParamIdx = 0;
@@ -351,16 +380,16 @@ export const webAdapter: IDatabaseAdapter = {
               const expr = kv[2].trim();
 
               if (expr === '?') {
-                row[col] = params[itemParamIdx++];
+                row[col] = setParams[itemParamIdx++];
               } else if (expr.includes('+')) {
                 const addMatch = expr.match(/([a-zA-Z0-9_]+)\s*\+\s*\?/);
                 if (addMatch) {
-                  row[col] = (Number(row[col]) || 0) + (Number(params[itemParamIdx++]) || 0);
+                  row[col] = (Number(row[col]) || 0) + (Number(setParams[itemParamIdx++]) || 0);
                 }
               } else if (expr.includes('-')) {
                 const subMatch = expr.match(/([a-zA-Z0-9_]+)\s*-\s*\?/);
                 if (subMatch) {
-                  row[col] = (Number(row[col]) || 0) - (Number(params[itemParamIdx++]) || 0);
+                  row[col] = (Number(row[col]) || 0) - (Number(setParams[itemParamIdx++]) || 0);
                 }
               } else if (expr === 'CURRENT_TIMESTAMP') {
                 row[col] = new Date().toISOString();
@@ -390,7 +419,8 @@ export const webAdapter: IDatabaseAdapter = {
       if (!whereClause) {
         dbData.tables[tableName] = [];
       } else {
-        dbData.tables[tableName] = rows.filter(row => !matchesCondition(row, whereClause, params, { idx: 0 }));
+        const substitutedWhere = substituteParams(whereClause, params);
+        dbData.tables[tableName] = rows.filter((row) => !matchesCondition(row, substitutedWhere));
       }
 
       saveDb();
