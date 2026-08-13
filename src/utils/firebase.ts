@@ -12,6 +12,7 @@ import {
   browserLocalPersistence,
   Auth
 } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 // Read Firebase configuration from environment variables
 const firebaseConfig = {
@@ -31,6 +32,7 @@ console.log('  • Auth Domain:', firebaseConfig.authDomain || 'Not set');
 
 let appInstance: any = null;
 let authInstance: Auth | null = null;
+let firestoreDbInstance: Firestore | null = null;
 
 // Validate configuration
 export function isFirebaseConfigured(): boolean {
@@ -47,6 +49,7 @@ if (isFirebaseConfigured()) {
   try {
     appInstance = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     authInstance = getAuth(appInstance);
+    firestoreDbInstance = getFirestore(appInstance);
     setPersistence(authInstance, browserLocalPersistence).catch((err) => {
       console.warn('[Firebase Auth] Failed to set persistence:', err);
     });
@@ -60,6 +63,7 @@ if (isFirebaseConfigured()) {
 }
 
 export const auth = authInstance as Auth;
+export const firestoreDb = firestoreDbInstance as Firestore;
 
 /**
  * Sign up a new user with email and password via Firebase Auth.

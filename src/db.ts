@@ -153,9 +153,11 @@ export const db = {
         status,
         order_index: nextOrder
       };
-      SyncService.queueChange('topics', res.id, 'CREATE', topicPayload);
-      SyncService.queueChange('tasks', res.id, 'CREATE', topicPayload);
-    } catch (e) {}
+      await SyncService.queueChange('topics', res.id, 'CREATE', topicPayload);
+      await SyncService.queueChange('tasks', res.id, 'CREATE', topicPayload);
+    } catch (e: any) {
+      console.warn('[db.addTopic] Sync notice:', e.message || e);
+    }
 
     return res;
   },
@@ -180,10 +182,12 @@ export const db = {
       const { SyncService } = await import('./services/SyncService');
       const updated = await get('SELECT * FROM topics WHERE id = ?', [id]);
       if (updated) {
-        SyncService.queueChange('topics', id, 'UPDATE', updated);
-        SyncService.queueChange('tasks', id, 'UPDATE', updated);
+        await SyncService.queueChange('topics', id, 'UPDATE', updated);
+        await SyncService.queueChange('tasks', id, 'UPDATE', updated);
       }
-    } catch (e) {}
+    } catch (e: any) {
+      console.warn('[db.updateTopic] Sync notice:', e.message || e);
+    }
 
     return res;
   },
@@ -192,9 +196,11 @@ export const db = {
     const res = await run('DELETE FROM topics WHERE id = ?', [id]);
     try {
       const { SyncService } = await import('./services/SyncService');
-      SyncService.queueChange('topics', id, 'DELETE', { id });
-      SyncService.queueChange('tasks', id, 'DELETE', { id });
-    } catch (e) {}
+      await SyncService.queueChange('topics', id, 'DELETE', { id });
+      await SyncService.queueChange('tasks', id, 'DELETE', { id });
+    } catch (e: any) {
+      console.warn('[db.deleteTopic] Sync notice:', e.message || e);
+    }
     return res;
   },
   

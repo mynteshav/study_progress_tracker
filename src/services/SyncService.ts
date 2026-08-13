@@ -7,7 +7,7 @@ import {
   onSnapshot,
   Unsubscribe
 } from 'firebase/firestore';
-import { auth, onFirebaseAuthStateChanged } from '../utils/firebase';
+import { auth, firestoreDb, onFirebaseAuthStateChanged } from '../utils/firebase';
 import { db } from '../db';
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'pending';
@@ -40,7 +40,7 @@ const SYNCED_ENTITIES = [
 ];
 
 class SyncServiceManager {
-  private firestore = getFirestore();
+  private firestore = firestoreDb || getFirestore();
   private activeUid: string | null = null;
   private unsubscribers: Unsubscribe[] = [];
   private statusListeners: Set<SyncStatusListener> = new Set();
@@ -280,6 +280,32 @@ class SyncServiceManager {
       return;
     }
 
+    const docId = String(entityId);
+    console.log(`[SyncService] FIRESTORE WRITE START -> users/${uid}/${entityType}/${docId}`);
+
+    if (navigator.onLine && this.firestore) {
+      const docRef = doc(this.firestore, `users/${uid}/${entityType}/${docId}`);
+      try {
+        if (operation === 'DELETE') {
+          await setDoc(docRef, { is_deleted: true, updated_at: new Date().toISOString() }, { merge: true });
+        } else {
+          await setDoc(
+            docRef,
+            {
+              ...payload,
+              updated_at: payload.updated_at || new Date().toISOString(),
+              is_deleted: false
+            },
+            { merge: true }
+          );
+        }
+        console.log(`[SyncService] FIRESTORE WRITE SUCCESS -> users/${uid}/${entityType}/${docId}`);
+      } catch (err: any) {
+        console.error(`[SyncService] FIRESTORE WRITE FAILED -> users/${uid}/${entityType}/${docId}:`, err);
+        throw new Error(`Firestore write failed: ${err.message || err}`);
+      }
+    }
+
     const payloadStr = JSON.stringify({
       ...payload,
       updated_at: new Date().toISOString(),
@@ -287,13 +313,10 @@ class SyncServiceManager {
     });
 
     try {
-      await db.addSyncQueueItem?.(uid, entityType, String(entityId), operation, payloadStr);
-      this.updateState({ status: 'pending', pendingCount: this.state.pendingCount + 1 });
-      this.processQueue();
+      await db.addSyncQueueItem?.(uid, entityType, docId, operation, payloadStr);
+      this.updateState({ status: 'synced' });
     } catch (err) {
       console.warn('[SyncService] Failed to queue change locally:', err);
-      // Directly attempt Firestore write if local queue failed
-      this.directFirestoreWrite(uid, entityType, String(entityId), operation, payload);
     }
   }
 
