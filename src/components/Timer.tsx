@@ -341,21 +341,20 @@ function Timer({ user, showToast }: TimerProps) {
         {/* Left: Interactive circular countdown */}
         <div className="glass-panel timer-container" style={{ position: 'relative' }}>
           {/* Header row with Fullscreen button */}
-          <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <span style={{ fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)' }}>Focus Timer</span>
+          <div className="timer-header">
+            <span className="timer-heading">Focus Timer</span>
             <button
-              className="btn btn-secondary"
+              className="btn btn-secondary btn-fullscreen"
               onClick={enterFullscreen}
               aria-label="Enter fullscreen timer"
               title="Enter Fullscreen"
-              style={{ padding: '6px 14px', fontSize: '0.85rem', minHeight: '38px' }}
             >
               <i className="fa-solid fa-expand"></i> Fullscreen
             </button>
           </div>
 
           <div className="timer-circle-wrapper">
-            <svg width="250" height="250">
+            <svg viewBox="0 0 250 250" className="timer-svg">
               <circle stroke="rgba(255,255,255,0.03)" strokeWidth="12" fill="transparent" r="110" cx="125" cy="125" />
               <circle
                 className="timer-ring-circle"
@@ -372,50 +371,48 @@ function Timer({ user, showToast }: TimerProps) {
             </svg>
             <div className="timer-display">
               <div className="timer-time">{formatDigits()}</div>
-              <div className="timer-mode">{timerState.isWorkMode ? 'Work Session' : 'Break Time'}</div>
+              <div className="timer-mode">{timerState.isWorkMode ? 'WORK SESSION' : 'BREAK TIME'}</div>
             </div>
           </div>
 
-          <div className="timer-controls" style={{ flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '12px' }}>
-            <button className="btn btn-secondary btn-circle" onClick={resetTimer} title="Reset Timer">
-              <i className="fa-solid fa-rotate-right"></i>
-            </button>
-            <button
-              className="btn btn-primary btn-circle"
-              onClick={toggleTimer}
-              style={{ width: '70px', height: '70px', fontSize: '1.6rem' }}
-              title={timerState.isRunning ? 'Pause' : 'Start'}
-            >
-              <i className={`fa-solid ${timerState.isRunning ? 'fa-pause' : 'fa-play'}`}></i>
-            </button>
-            <button className="btn btn-secondary btn-circle" onClick={skipSession} title="Next Session">
-              <i className="fa-solid fa-forward"></i>
-            </button>
-            <button
-              className={`btn ${timerState.sessionSaved ? 'btn-secondary' : 'btn-success'}`}
-              onClick={handleSaveTimerClick}
-              disabled={!isSessionActiveOrCompleted && !timerState.sessionSaved}
-              style={{
-                height: '48px',
-                padding: '0 18px',
-                fontSize: '0.95rem',
-                fontWeight: 600,
-                borderRadius: '24px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                opacity: (isSessionActiveOrCompleted || timerState.sessionSaved) ? 1 : 0.5,
-                cursor: (isSessionActiveOrCompleted || timerState.sessionSaved) ? 'pointer' : 'not-allowed',
-                boxShadow: (!timerState.sessionSaved && isSessionActiveOrCompleted) ? '0 4px 14px rgba(16, 185, 129, 0.4)' : 'none'
-              }}
-              title={timerState.sessionSaved ? 'Session already saved' : 'Save Timer'}
-            >
-              <i className={`fa-solid ${timerState.sessionSaved ? 'fa-circle-check' : 'fa-floppy-disk'}`}></i>
-              Save Timer
-            </button>
+          <div className="timer-controls-container">
+            <div className="timer-main-controls-row">
+              <button className="btn btn-secondary btn-circle btn-control-sm" onClick={resetTimer} title="Reset Timer" aria-label="Reset timer">
+                <i className="fa-solid fa-rotate-right"></i>
+              </button>
+              <button
+                className="btn btn-primary btn-circle btn-control-lg"
+                onClick={toggleTimer}
+                title={timerState.isRunning ? 'Pause' : 'Start'}
+                aria-label={timerState.isRunning ? 'Pause timer' : 'Start timer'}
+              >
+                <i className={`fa-solid ${timerState.isRunning ? 'fa-pause' : 'fa-play'}`}></i>
+              </button>
+              <button className="btn btn-secondary btn-circle btn-control-sm" onClick={skipSession} title="Next Session" aria-label="Next session">
+                <i className="fa-solid fa-forward"></i>
+              </button>
+            </div>
+
+            <div className="timer-save-control-row">
+              <button
+                className={`btn ${timerState.sessionSaved ? 'btn-secondary' : 'btn-success'} btn-save-timer`}
+                onClick={handleSaveTimerClick}
+                disabled={!isSessionActiveOrCompleted && !timerState.sessionSaved}
+                style={{
+                  opacity: (isSessionActiveOrCompleted || timerState.sessionSaved) ? 1 : 0.5,
+                  cursor: (isSessionActiveOrCompleted || timerState.sessionSaved) ? 'pointer' : 'not-allowed',
+                  boxShadow: (!timerState.sessionSaved && isSessionActiveOrCompleted) ? '0 4px 14px rgba(16, 185, 129, 0.4)' : 'none'
+                }}
+                title={timerState.sessionSaved ? 'Session already saved' : 'Save Timer'}
+                aria-label="Save timer session"
+              >
+                <i className={`fa-solid ${timerState.sessionSaved ? 'fa-circle-check' : 'fa-floppy-disk'}`}></i>
+                <span>{timerState.sessionSaved ? 'Saved' : 'Save Timer'}</span>
+              </button>
+            </div>
           </div>
 
-          <div style={{ fontWeight: 500, fontSize: '0.95rem', color: 'var(--text-secondary)', marginTop: '16px' }}>
+          <div className="timer-progress-info">
             Today's Progress: <strong>{todayWorkLogs.length} sessions</strong> completed (<strong>{formatTimeDisplay(todayFocusedMinutes)}</strong>)
           </div>
         </div>
@@ -471,7 +468,7 @@ function Timer({ user, showToast }: TimerProps) {
               />
             </div>
 
-            <div className="grid-3" style={{ gap: '12px', marginTop: '10px' }}>
+            <div className="timer-settings-inputs-grid">
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label style={{ fontSize: '0.8rem' }}>Work (min)</label>
                 <input
