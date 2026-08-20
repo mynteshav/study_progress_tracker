@@ -112,9 +112,21 @@ function Dashboard({ user, navigate, showToast }: DashboardProps) {
 
   useEffect(() => {
     loadDashboardData();
-    return TimerService.onSessionLogged(() => {
+    const unsubTimer = TimerService.onSessionLogged(() => {
       loadDashboardData();
     });
+
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange(() => {
+        loadDashboardData();
+      });
+    }).catch(console.error);
+
+    return () => {
+      unsubTimer();
+      if (unsubSync) unsubSync();
+    };
   }, [user]);
 
   // Render Mini Chart

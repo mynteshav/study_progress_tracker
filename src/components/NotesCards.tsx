@@ -76,6 +76,22 @@ function NotesCards({ user, showToast }: NotesCardsProps) {
     } else {
       loadDecks();
     }
+
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange((entity) => {
+        if (entity === 'all' || entity === 'notes') {
+          loadNotes();
+        }
+        if (entity === 'all' || entity.startsWith('flashcard')) {
+          loadDecks();
+        }
+      });
+    }).catch(console.error);
+
+    return () => {
+      if (unsubSync) unsubSync();
+    };
   }, [activeTab, search, user]);
 
   const handleSelectNote = (note: any | null) => {

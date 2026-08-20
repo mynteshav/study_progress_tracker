@@ -49,6 +49,7 @@ class SyncServiceManager {
   private unsubscribers: Unsubscribe[] = [];
   private statusListeners: Set<SyncStatusListener> = new Set();
   private dataChangeListeners: Set<DataChangeListener> = new Set();
+  private notifyTimeout: any = null;
 
   private state: SyncStatusState = {
     status: 'synced',
@@ -118,7 +119,10 @@ class SyncServiceManager {
   }
 
   public notifyDataChange(entityType: string) {
-    this.dataChangeListeners.forEach((l) => l(entityType));
+    if (this.notifyTimeout) clearTimeout(this.notifyTimeout);
+    this.notifyTimeout = setTimeout(() => {
+      this.dataChangeListeners.forEach((l) => l(entityType));
+    }, 100);
   }
 
   /**

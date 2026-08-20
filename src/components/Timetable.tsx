@@ -47,6 +47,18 @@ function Timetable({ user, showToast }: TimetableProps) {
 
   useEffect(() => {
     loadData();
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange((entity) => {
+        if (entity === 'all' || entity === 'timetable_blocks') {
+          loadData();
+        }
+      });
+    }).catch(console.error);
+
+    return () => {
+      if (unsubSync) unsubSync();
+    };
   }, [user]);
 
   const handleOpenModal = (b: any = null) => {

@@ -134,9 +134,23 @@ function Habits({ user, showToast }: HabitsProps) {
 
   useEffect(() => {
     loadData();
-    return TimerService.onSessionLogged(() => {
+    const unsubTimer = TimerService.onSessionLogged(() => {
       loadData();
     });
+
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange((entity) => {
+        if (entity === 'all' || entity.startsWith('habit')) {
+          loadData();
+        }
+      });
+    }).catch(console.error);
+
+    return () => {
+      unsubTimer();
+      if (unsubSync) unsubSync();
+    };
   }, [user]);
 
   const handleCellToggle = async (habitId: number, date: string, isCompleted: boolean) => {

@@ -26,8 +26,10 @@ function Projects({ user, showToast }: ProjectsProps) {
   const [taskTitle, setTaskTitle] = useState<string>('');
   const [taskDue, setTaskDue] = useState<string>('');
 
-  const loadProjects = async () => {
-    setLoading(true);
+  const loadProjects = async (silent: boolean = false) => {
+    if (!silent && projects.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await db.getProjects(user.id);
       setProjects(data);
@@ -40,6 +42,18 @@ function Projects({ user, showToast }: ProjectsProps) {
 
   useEffect(() => {
     loadProjects();
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange((entity) => {
+        if (entity === 'all' || entity.startsWith('project')) {
+          loadProjects(true);
+        }
+      });
+    }).catch(console.error);
+
+    return () => {
+      if (unsubSync) unsubSync();
+    };
   }, [user]);
 
   const handleOpenProjModal = (p: any = null) => {

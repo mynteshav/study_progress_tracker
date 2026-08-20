@@ -31,8 +31,10 @@ function Topics({ user, showToast }: TopicsProps) {
   // Drag-and-drop state tracker
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-  const loadTopics = async () => {
-    setLoading(true);
+  const loadTopics = async (silent: boolean = false) => {
+    if (!silent && topics.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await db.getTopics(user.id, selectedDate);
       setTopics(data);
@@ -45,6 +47,18 @@ function Topics({ user, showToast }: TopicsProps) {
 
   useEffect(() => {
     loadTopics();
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange((entity) => {
+        if (entity === 'all' || entity === 'topics' || entity === 'tasks') {
+          loadTopics(true);
+        }
+      });
+    }).catch(console.error);
+
+    return () => {
+      if (unsubSync) unsubSync();
+    };
   }, [selectedDate, user]);
 
   const handleOpenModal = (topic: any = null) => {

@@ -60,8 +60,10 @@ function Analytics({ user, showToast }: AnalyticsProps) {
     return `${hours}h ${mins}m`;
   };
 
-  const loadAnalytics = async () => {
-    setLoading(true);
+  const loadAnalytics = async (silent: boolean = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       // 1. Get favorite subject
       const fav = await db.getFavoriteSubject(user.id) as any;
@@ -126,11 +128,20 @@ function Analytics({ user, showToast }: AnalyticsProps) {
 
   useEffect(() => {
     loadAnalytics();
-    const unsub = TimerService.onSessionLogged(() => {
-      loadAnalytics();
+    const unsubTimer = TimerService.onSessionLogged(() => {
+      loadAnalytics(true);
     });
+
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange(() => {
+        loadAnalytics(true);
+      });
+    }).catch(console.error);
+
     return () => {
-      unsub();
+      unsubTimer();
+      if (unsubSync) unsubSync();
       if (subjectChartInst.current) {
         subjectChartInst.current.destroy();
         subjectChartInst.current = null;

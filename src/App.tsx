@@ -271,25 +271,25 @@ function App() {
 
     switch (activeSection) {
       case 'dashboard':
-        return <Dashboard key={syncRefreshKey} user={user} navigate={setActiveSection} showToast={showToast} />;
+        return <Dashboard user={user} navigate={setActiveSection} showToast={showToast} />;
       case 'topics':
-        return <Topics key={syncRefreshKey} user={user} showToast={showToast} />;
+        return <Topics user={user} showToast={showToast} />;
       case 'timer':
-        return <Timer key={syncRefreshKey} user={user} showToast={showToast} playBell={playBellAlert} />;
+        return <Timer user={user} showToast={showToast} playBell={playBellAlert} />;
       case 'dsa':
-        return <Dsa key={syncRefreshKey} user={user} showToast={showToast} />;
+        return <Dsa user={user} showToast={showToast} />;
       case 'projects':
-        return <Projects key={syncRefreshKey} user={user} showToast={showToast} />;
+        return <Projects user={user} showToast={showToast} />;
       case 'timetable':
-        return <Timetable key={syncRefreshKey} user={user} showToast={showToast} />;
+        return <Timetable user={user} showToast={showToast} />;
       case 'habits':
-        return <Habits key={syncRefreshKey} user={user} showToast={showToast} />;
+        return <Habits user={user} showToast={showToast} />;
       case 'notes':
-        return <NotesCards key={syncRefreshKey} user={user} showToast={showToast} />;
+        return <NotesCards user={user} showToast={showToast} />;
       case 'roadmap':
-        return <Roadmap key={syncRefreshKey} user={user} navigate={setActiveSection} showToast={showToast} />;
+        return <Roadmap user={user} navigate={setActiveSection} showToast={showToast} />;
       case 'analytics':
-        return <Analytics key={syncRefreshKey} user={user} showToast={showToast} />;
+        return <Analytics user={user} showToast={showToast} />;
       default:
         return <div className="glass-panel"><h3>View not found</h3></div>;
     }

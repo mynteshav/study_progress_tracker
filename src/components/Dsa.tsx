@@ -44,6 +44,18 @@ function Dsa({ user, showToast }: DsaProps) {
 
   useEffect(() => {
     loadData();
+    let unsubSync: (() => void) | null = null;
+    import('../services/SyncService').then(({ SyncService }) => {
+      unsubSync = SyncService.subscribeDataChange((entity) => {
+        if (entity === 'all' || entity === 'dsa_problems') {
+          loadData();
+        }
+      });
+    }).catch(console.error);
+
+    return () => {
+      if (unsubSync) unsubSync();
+    };
   }, [user]);
 
   const handleOpenModal = (prob: any = null) => {
