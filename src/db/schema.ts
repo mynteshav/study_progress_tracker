@@ -209,6 +209,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     difficulty TEXT CHECK(difficulty IN ('Beginner', 'Intermediate', 'Advanced', 'Expert')) DEFAULT 'Intermediate',
     duration TEXT,
     is_active INTEGER CHECK(is_active IN (0, 1)) DEFAULT 0,
+    is_custom INTEGER CHECK(is_custom IN (0, 1)) DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

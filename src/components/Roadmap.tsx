@@ -93,6 +93,9 @@ export default function Roadmap({ user, navigate, showToast }: RoadmapProps) {
   const loadData = async () => {
     setLoading(true);
     try {
+      if (db.cleanupDefaultRoadmaps) {
+        await db.cleanupDefaultRoadmaps(user.id);
+      }
       let all = await db.getRoadmaps(user.id);
 
       setRoadmaps(all);
@@ -477,30 +480,6 @@ export default function Roadmap({ user, navigate, showToast }: RoadmapProps) {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {/* Preset Generator Dropdown */}
-          <div className="dropdown" style={{ position: 'relative' }}>
-            <select
-              className="btn btn-secondary"
-              onChange={(e) => {
-                if (e.target.value) {
-                  db.seedPresetRoadmap(user.id, e.target.value as any).then(() => {
-                    loadData();
-                    showToast('Preset roadmap added!', 'success');
-                  });
-                  e.target.value = '';
-                }
-              }}
-              style={{ backgroundColor: '#1e293b', color: '#f8fafc', borderColor: '#334155', cursor: 'pointer' }}
-            >
-              <option value="">+ Add Preset Roadmap...</option>
-              <option value="ai">AI Engineer Curriculum</option>
-              <option value="ds">Data Scientist Path</option>
-              <option value="fs">Full Stack Developer</option>
-              <option value="backend">Backend Developer</option>
-              <option value="devops">DevOps Engineer</option>
-            </select>
-          </div>
-
           <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
             <i className="fa-solid fa-plus" style={{ marginRight: '0.5rem' }}></i> Create Custom Roadmap
           </button>

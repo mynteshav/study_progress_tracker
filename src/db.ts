@@ -1159,7 +1159,7 @@ export const db = {
   // Roadmap Module API Methods
   async getRoadmaps(userId: number) {
     return query(
-      'SELECT * FROM roadmaps WHERE user_id = ? ORDER BY is_active DESC, updated_at DESC',
+      'SELECT * FROM roadmaps WHERE user_id = ? AND (is_custom IS NULL OR is_custom = 1) ORDER BY is_active DESC, updated_at DESC',
       [userId]
     );
   },
@@ -1169,9 +1169,9 @@ export const db = {
   },
 
   async getActiveRoadmap(userId: number) {
-    const active = await get('SELECT * FROM roadmaps WHERE user_id = ? AND is_active = 1 LIMIT 1', [userId]);
+    const active = await get('SELECT * FROM roadmaps WHERE user_id = ? AND is_active = 1 AND (is_custom IS NULL OR is_custom = 1) LIMIT 1', [userId]);
     if (active) return active;
-    return get('SELECT * FROM roadmaps WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [userId]);
+    return get('SELECT * FROM roadmaps WHERE user_id = ? AND (is_custom IS NULL OR is_custom = 1) ORDER BY updated_at DESC LIMIT 1', [userId]);
   },
 
   async setActiveRoadmap(userId: number, roadmapId: number) {
@@ -1187,12 +1187,12 @@ export const db = {
     difficulty: string = 'Intermediate',
     duration: string = '12 weeks'
   ) {
-    const existing = await query('SELECT id FROM roadmaps WHERE user_id = ?', [userId]);
+    const existing = await query('SELECT id FROM roadmaps WHERE user_id = ? AND (is_custom IS NULL OR is_custom = 1)', [userId]);
     const isActive = existing.length === 0 ? 1 : 0;
 
     const res = await run(
-      `INSERT INTO roadmaps (user_id, title, description, target_role, difficulty, duration, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO roadmaps (user_id, title, description, target_role, difficulty, duration, is_active, is_custom)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
       [userId, title.trim(), description.trim(), targetRole.trim(), difficulty, duration, isActive]
     );
 
@@ -1207,7 +1207,8 @@ export const db = {
         status: 'active',
         difficulty,
         duration,
-        is_active: isActive
+        is_active: isActive,
+        is_custom: 1
       });
     } catch (e) {}
 
@@ -1593,80 +1594,34 @@ export const db = {
     );
   },
 
-  // Preset Template Auto-Seeding
-  async seedPresetRoadmap(userId: number, templateKey: 'ai' | 'ds' | 'fs' | 'backend' | 'devops') {
-    const presets: Record<string, { title: string; description: string; role: string; difficulty: string; duration: string; sections: { name: string; topics: { name: string; desc?: string; difficulty?: string; hours?: number; resources?: { title: string; url: string; type: string }[]; checklists?: string[] }[] }[] }> = {
-      ai: {
-        title: 'AI Engineer',
-        description: 'Comprehensive curriculum from foundations to advanced LLMs, RAG, AI Agents, and MLOps.',
-        role: 'AI Engineer / LLM Developer',
-        difficulty: 'Advanced',
-        duration: '16 weeks',
-        sections: [
-          { name: 'Programming', topics: [{ name: 'Python', desc: 'Core syntax, data types, control flow, functions', hours: 10, checklists: ['Variables & Data Types', 'Control Flow', 'Functions & Modules'] }, { name: 'OOP', desc: 'Classes, inheritance, polymorphism, encapsulation', hours: 8, checklists: ['Classes & Objects', 'Inheritance', 'Dunder Methods'] }, { name: 'Advanced Python', desc: 'Decorators, generators, context managers, async', hours: 12, checklists: ['Decorators', 'Generators & Iterators', 'Asyncio & Concurrency'] }] },
-          { name: 'Mathematics', topics: [{ name: 'Linear Algebra', desc: 'Vectors, matrices, eigenvalues, SVD', hours: 15, checklists: ['Vectors & Matrices', 'Matrix Multiplication', 'Eigenvalues & Eigenvectors', 'SVD'] }, { name: 'Probability', desc: 'Probability distributions, Bayes theorem', hours: 10, checklists: ['Random Variables', 'Probability Distributions', 'Bayes Theorem'] }, { name: 'Statistics', desc: 'Hypothesis testing, variance, regression metrics', hours: 12, checklists: ['Descriptive Stats', 'Hypothesis Testing', 'Confidence Intervals'] }, { name: 'Calculus', desc: 'Derivatives, partial derivatives, gradients', hours: 10, checklists: ['Derivatives', 'Partial Derivatives', 'Gradient Descent'] }] },
-          { name: 'Machine Learning', topics: [{ name: 'Supervised Learning', desc: 'Linear regression, logistic regression, trees', hours: 20, checklists: ['Linear Regression', 'Logistic Regression', 'Decision Trees', 'Random Forests'] }, { name: 'Regression', desc: 'Ridge, Lasso, Polynomial Regression', hours: 10, checklists: ['L1/L2 Regularization', 'Evaluation Metrics (MSE/RMSE/MAE)'] }, { name: 'Classification', desc: 'SVM, KNN, Naive Bayes, Confusion Matrix', hours: 15, checklists: ['SVM & Kernels', 'Precision/Recall/F1', 'ROC-AUC Curve'] }] },
-          { name: 'Deep Learning', topics: [{ name: 'Neural Networks', desc: 'Perceptrons, backpropagation, activation functions', hours: 25, checklists: ['Perceptrons', 'Forward/Backward Pass', 'Activations (ReLU, Sigmoid, Softmax)', 'Optimizers (Adam, SGD)'] }, { name: 'CNN', desc: 'Convolutional layers, pooling, ResNet', hours: 15, checklists: ['Convolution Operation', 'Pooling Layers', 'ResNet Architecture'] }, { name: 'RNN', desc: 'Sequential models, vanishing gradients', hours: 12, checklists: ['Sequence Modeling', 'Hidden States', 'Vanishing Gradients'] }, { name: 'LSTM', desc: 'Gated architectures, cell state, GRU', hours: 12, checklists: ['Forget/Input/Output Gates', 'Cell State', 'GRU vs LSTM'] }] },
-          { name: 'NLP', topics: [{ name: 'NLP Foundations', desc: 'Tokenization, Embeddings, Word2Vec, TF-IDF', hours: 15, checklists: ['Tokenization', 'Stemming & Lemmatization', 'TF-IDF', 'Word2Vec'] }] },
-          { name: 'Transformers', topics: [{ name: 'Transformers', desc: 'Attention mechanisms, Encoder-Decoder, BERT, GPT', hours: 30, checklists: ['Attention', 'Self Attention', 'Multi Head Attention', 'Positional Encoding', 'Encoder', 'Decoder', 'BERT', 'GPT'], resources: [{ title: 'Attention Is All You Need (Paper)', url: 'https://arxiv.org/abs/1706.03762', type: 'Documentation' }, { title: 'The Illustrated Transformer', url: 'https://jalammar.github.io/illustrated-transformer/', type: 'Blog' }] }] },
-          { name: 'LLMs', topics: [{ name: 'LLM Architectures', desc: 'Fine-tuning, LoRA, QLoRA, Quantization, Prompt Engineering', hours: 25, checklists: ['Prompt Engineering', 'Instruction Tuning', 'LoRA & PEFT', 'Quantization (GGUF/BitsAndBytes)'] }] },
-          { name: 'LangChain', topics: [{ name: 'LangChain', desc: 'Chains, Memory, Agents, Tools, LCEL', hours: 20, checklists: ['LCEL Syntax', 'Prompt Templates', 'Output Parsers', 'VectorStore Integrations'] }] },
-          { name: 'RAG', topics: [{ name: 'RAG', desc: 'Retrieval Augmented Generation, Vector Databases, Chunking, Hybrid Search', hours: 25, checklists: ['Document Loaders', 'Text Chunking Strategies', 'Vector Databases (Chroma/Pinecone/PGVector)', 'Hybrid & Re-ranking Search'] }] },
-          { name: 'MCP', topics: [{ name: 'MCP', desc: 'Model Context Protocol, client-server integrations', hours: 15, checklists: ['MCP Protocol Specs', 'Building Custom MCP Servers', 'Connecting MCP to LLM Clients'] }] },
-          { name: 'AI Agents', topics: [{ name: 'AI Agents', desc: 'Autonomous agents, ReAct pattern, LangGraph, AutoGen', hours: 30, checklists: ['ReAct Prompting Pattern', 'Tool Calling', 'LangGraph State Graphs', 'Multi-Agent Collaboration'] }] },
-          { name: 'FastAPI', topics: [{ name: 'FastAPI', desc: 'Building high-performance async APIs for AI models', hours: 12, checklists: ['Async Endpoints', 'Pydantic Schemas', 'Streaming Responses (SSE)'] }] },
-          { name: 'Docker', topics: [{ name: 'Docker', desc: 'Containerizing AI applications & models', hours: 10, checklists: ['Dockerfiles', 'Container Networking', 'Docker Compose'] }] },
-          { name: 'Kubernetes', topics: [{ name: 'Kubernetes', desc: 'Deploying and scaling model services', hours: 15, checklists: ['Deployments & Pods', 'Services & Ingress', 'Scaling & Resource Limits'] }] },
-          { name: 'AWS', topics: [{ name: 'AWS Cloud', desc: 'S3, EC2, SageMaker, Lambda for AI', hours: 15, checklists: ['S3 Storage', 'EC2 GPU Instances', 'Bedrock & SageMaker'] }] },
-          { name: 'MLOps', topics: [{ name: 'MLOps', desc: 'Model monitoring, tracking with MLflow, CI/CD for AI', hours: 20, checklists: ['Experiment Tracking (MLflow/W&B)', 'Model Registry', 'Data & Model Drift Detection'] }] },
-          { name: 'Projects', topics: [{ name: 'Full-Stack RAG Chatbot', desc: 'Build an end-to-end RAG system with VectorDB & React', hours: 35, checklists: ['Ingestion Pipeline', 'Vector Indexing', 'FastAPI Backend', 'React UI'] }] },
-          { name: 'Interview Preparation', topics: [{ name: 'AI Systems & Coding Interviews', desc: 'ML system design, algorithm challenges, mock interviews', hours: 30, checklists: ['ML System Design', 'Python & PyTorch Coding', 'Transformer Architecture Q&A'] }] }
-        ]
-      },
-      ds: { title: 'Data Scientist', description: 'End-to-end path from exploratory data analysis to machine learning, SQL, statistics, and business visualization.', role: 'Data Scientist', difficulty: 'Intermediate', duration: '14 weeks', sections: [{ name: 'Fundamentals', topics: [{ name: 'Python & Data Wrangling', hours: 12, checklists: ['NumPy Arrays', 'Pandas DataFrames', 'Data Cleaning'] }, { name: 'SQL for Data Science', hours: 15, checklists: ['Joins & Subqueries', 'Window Functions', 'Aggregation'] }] }, { name: 'Visualization & Analysis', topics: [{ name: 'Data Visualization', hours: 10, checklists: ['Seaborn Plots', 'Plotly Interactive Charts', 'Storytelling'] }, { name: 'Exploratory Data Analysis', hours: 15, checklists: ['Missing Value Treatment', 'Outlier Detection', 'Correlation Analysis'] }] }, { name: 'Machine Learning', topics: [{ name: 'Predictive Modeling', hours: 25, checklists: ['Feature Engineering', 'Cross-Validation', 'Scikit-Learn Pipelines'] }, { name: 'Advanced ML & Ensembles', hours: 20, checklists: ['XGBoost', 'LightGBM', 'Hyperparameter Tuning'] }] }] },
-      fs: { title: 'Full Stack Developer', description: 'Modern full-stack web development with React, TypeScript, Node.js, Next.js, and Cloud deployment.', role: 'Full Stack Engineer', difficulty: 'Intermediate', duration: '14 weeks', sections: [{ name: 'Frontend', topics: [{ name: 'HTML5 & CSS3', hours: 10, checklists: ['Flexbox & Grid', 'Responsive Design', 'CSS Variables'] }, { name: 'JavaScript & TypeScript', hours: 20, checklists: ['ES6+ Features', 'Async/Await', 'TypeScript Interfaces & Generics'] }, { name: 'React & Ecosystem', hours: 25, checklists: ['Hooks & Context', 'State Management', 'Tailwind CSS'] }] }, { name: 'Backend', topics: [{ name: 'Node.js & Express', hours: 20, checklists: ['REST API Routing', 'Middleware', 'JWT Authentication'] }, { name: 'Databases', hours: 18, checklists: ['PostgreSQL Schema Design', 'Prisma ORM', 'Indexing & Queries'] }] }] },
-      backend: { title: 'Backend Developer', description: 'Deep dive into microservices, distributed databases, high performance APIs, and system design.', role: 'Backend Engineer', difficulty: 'Advanced', duration: '12 weeks', sections: [{ name: 'Core System Concepts', topics: [{ name: 'API Design & Protocols', hours: 15, checklists: ['RESTful Standards', 'gRPC & Protocol Buffers', 'WebSockets'] }, { name: 'Database Architecture', hours: 20, checklists: ['ACID Transactions', 'Sharding & Replication', 'Redis Caching'] }] }, { name: 'System Design', topics: [{ name: 'Scalable Systems', hours: 30, checklists: ['Load Balancing', 'Message Queues (Kafka)', 'Microservices Patterns'] }] }] },
-      devops: { title: 'DevOps Engineer', description: 'Master CI/CD pipelines, container orchestration with Kubernetes, Cloud, and Infrastructure as Code.', role: 'DevOps / SRE', difficulty: 'Advanced', duration: '12 weeks', sections: [{ name: 'Infrastructure & Automation', topics: [{ name: 'Linux & Bash Scripting', hours: 12, checklists: ['File Permissions & Users', 'Cron Jobs', 'Shell Automation'] }, { name: 'Docker & Kubernetes', hours: 25, checklists: ['Dockerfile Best Practices', 'K8s Pods & Services', 'Helm Charts'] }, { name: 'CI/CD & Terraform', hours: 20, checklists: ['GitHub Actions', 'Terraform Modules', 'Prometheus & Grafana'] }] }] }
-    };
+  // Cleanup default / preset roadmaps migration routine
+  async cleanupDefaultRoadmaps(userId: number) {
+    try {
+      const allRoadmaps = await query('SELECT * FROM roadmaps WHERE user_id = ?', [userId]);
+      const defaultTitles = ['AI Engineer', 'Data Scientist', 'Full Stack Developer', 'Backend Developer', 'DevOps Engineer'];
+      const defaultDescPrefixes = [
+        'Comprehensive curriculum',
+        'End-to-end path',
+        'Modern full-stack',
+        'Deep dive into',
+        'Master CI/CD'
+      ];
 
-    const preset = presets[templateKey] || presets['ai'];
-    const rRes = await this.createRoadmap(userId, preset.title, preset.description, preset.role, preset.difficulty, preset.duration);
-    const roadmapId = rRes.id;
+      for (const r of allRoadmaps as any[]) {
+        const title = (r.title || '').trim();
+        const desc = (r.description || '').trim();
+        const isKnownDefaultName = defaultTitles.includes(title);
+        const matchesDefaultDesc = defaultDescPrefixes.some(prefix => desc.startsWith(prefix));
+        const isExplicitNotCustom = r.is_custom === 0;
 
-    for (let sIdx = 0; sIdx < preset.sections.length; sIdx++) {
-      const sec = preset.sections[sIdx];
-      const secRes = await this.createRoadmapSection(roadmapId, sec.name, sIdx);
-      const sectionId = secRes.id;
-
-      for (let tIdx = 0; tIdx < sec.topics.length; tIdx++) {
-        const top = sec.topics[tIdx];
-        const topRes = await this.createRoadmapTopic(
-          sectionId,
-          roadmapId,
-          top.name,
-          top.desc || '',
-          top.difficulty || 'Intermediate',
-          'medium',
-          top.hours || 10
-        );
-        const topicId = topRes.id;
-
-        if (top.checklists && top.checklists.length > 0) {
-          for (let cIdx = 0; cIdx < top.checklists.length; cIdx++) {
-            await this.addTopicChecklist(topicId, top.checklists[cIdx]);
-          }
-        }
-
-        if (top.resources && top.resources.length > 0) {
-          for (const res of top.resources) {
-            await this.addTopicResource(topicId, res.title, res.url, res.type, '');
-          }
+        if (isExplicitNotCustom || (isKnownDefaultName && matchesDefaultDesc)) {
+          console.log(`[db.cleanupDefaultRoadmaps] Removing unwanted default roadmap: ID ${r.id} ("${title}")`);
+          await this.deleteRoadmap(r.id);
         }
       }
+    } catch (err) {
+      console.warn('[db.cleanupDefaultRoadmaps] Error during cleanup:', err);
     }
-
-    await this.setActiveRoadmap(userId, roadmapId);
-    return roadmapId;
   },
 
   // --- SYNC SERVICE DATABASE HELPERS ---
@@ -1928,13 +1883,14 @@ export const db = {
 
   async saveRemoteRoadmap(r: any) {
     if (!r || !r.id) return;
+    const isCustom = r.is_custom !== undefined ? r.is_custom : (r.isCustom !== undefined ? (r.isCustom ? 1 : 0) : 1);
     return run(
-      `INSERT INTO roadmaps (id, user_id, title, description, target_role, status, difficulty, duration, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO roadmaps (id, user_id, title, description, target_role, status, difficulty, duration, is_active, is_custom, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          user_id = excluded.user_id, title = excluded.title, description = excluded.description,
          target_role = excluded.target_role, status = excluded.status, difficulty = excluded.difficulty,
-         duration = excluded.duration, is_active = excluded.is_active, updated_at = excluded.updated_at`,
+         duration = excluded.duration, is_active = excluded.is_active, is_custom = excluded.is_custom, updated_at = excluded.updated_at`,
       [
         r.id,
         r.user_id || 1,
@@ -1945,6 +1901,7 @@ export const db = {
         r.difficulty || 'Intermediate',
         r.duration || '12 weeks',
         r.is_active !== undefined ? r.is_active : (r.isActive ? 1 : 0),
+        isCustom,
         r.created_at || new Date().toISOString(),
         r.updated_at || new Date().toISOString()
       ]
