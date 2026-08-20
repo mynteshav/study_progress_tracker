@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../db';
 import { User } from '../App';
 import Chart from 'chart.js/auto';
+import { SyncService } from '../services/SyncService';
 
 interface RoadmapProps {
   user: User;
@@ -93,12 +94,6 @@ export default function Roadmap({ user, navigate, showToast }: RoadmapProps) {
     setLoading(true);
     try {
       let all = await db.getRoadmaps(user.id);
-      
-      // Auto seed AI Engineer roadmap if user has zero roadmaps
-      if (all.length === 0) {
-        await db.seedPresetRoadmap(user.id, 'ai');
-        all = await db.getRoadmaps(user.id);
-      }
 
       setRoadmaps(all);
 
@@ -131,6 +126,12 @@ export default function Roadmap({ user, navigate, showToast }: RoadmapProps) {
 
   useEffect(() => {
     loadData();
+    const unsub = SyncService.subscribeDataChange((entityType) => {
+      if (entityType === 'all' || entityType.startsWith('roadmap')) {
+        loadData();
+      }
+    });
+    return () => unsub();
   }, [user]);
 
   // Handle switching active roadmap
@@ -551,65 +552,72 @@ export default function Roadmap({ user, navigate, showToast }: RoadmapProps) {
       <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>My Roadmaps</h3>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
-          {roadmaps.map((r: any) => {
-            const isActive = activeRoadmap && activeRoadmap.id === r.id;
-            return (
-              <div
-                key={r.id}
-                onClick={() => handleSelectRoadmap(r.id)}
-                className={`card-hover ${isActive ? 'active-roadmap-card' : ''}`}
-                style={{
-                  padding: '1rem',
-                  borderRadius: '12px',
-                  background: isActive ? 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(168,85,247,0.15) 100%)' : 'rgba(30,41,59,0.5)',
-                  border: isActive ? '1.5px solid #6366f1' : '1px solid rgba(255,255,255,0.08)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  position: 'relative'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span className="badge" style={{ backgroundColor: r.difficulty === 'Advanced' ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)', color: r.difficulty === 'Advanced' ? '#f87171' : '#60a5fa', border: 'none', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
-                    {r.difficulty || 'Intermediate'}
-                  </span>
-                  {isActive && (
-                    <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.2)', color: '#34d399', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
-                      <i className="fa-solid fa-check-circle" style={{ marginRight: '4px' }}></i> Active
-                    </span>
-                  )}
-                </div>
-
-                <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.1rem', fontWeight: 600 }}>{r.title}</h4>
-                <p style={{ color: '#94a3b8', fontSize: '0.825rem', margin: 0, height: '2.4em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                  {r.description || 'Custom learning roadmap'}
-                </p>
-
-                <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1' }}>
-                  <span><i className="fa-solid fa-clock" style={{ marginRight: '4px' }}></i> {r.duration || '12 weeks'}</span>
-                  <span><i className="fa-solid fa-user-gear" style={{ marginRight: '4px' }}></i> {r.target_role || 'Tech'}</span>
-                </div>
-
-                {/* Delete button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`Delete roadmap "${r.title}"?`)) {
-                      db.deleteRoadmap(r.id).then(() => {
-                        showToast('Roadmap deleted', 'info');
-                        loadData();
-                      });
-                    }
+        {roadmaps.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#94a3b8' }}>
+            <i className="fa-solid fa-route" style={{ fontSize: '2.5rem', marginBottom: '0.75rem', opacity: 0.5, color: '#6366f1' }}></i>
+            <p style={{ margin: 0, fontSize: '1rem', fontWeight: 500, color: '#e2e8f0' }}>No roadmaps yet. Create your first roadmap.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
+            {roadmaps.map((r: any) => {
+              const isActive = activeRoadmap && activeRoadmap.id === r.id;
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => handleSelectRoadmap(r.id)}
+                  className={`card-hover ${isActive ? 'active-roadmap-card' : ''}`}
+                  style={{
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    background: isActive ? 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(168,85,247,0.15) 100%)' : 'rgba(30,41,59,0.5)',
+                    border: isActive ? '1.5px solid #6366f1' : '1px solid rgba(255,255,255,0.08)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    position: 'relative'
                   }}
-                  style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}
-                  title="Delete Roadmap"
                 >
-                  <i className="fa-solid fa-trash"></i>
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <span className="badge" style={{ backgroundColor: r.difficulty === 'Advanced' ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)', color: r.difficulty === 'Advanced' ? '#f87171' : '#60a5fa', border: 'none', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                      {r.difficulty || 'Intermediate'}
+                    </span>
+                    {isActive && (
+                      <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.2)', color: '#34d399', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                        <i className="fa-solid fa-check-circle" style={{ marginRight: '4px' }}></i> Active
+                      </span>
+                    )}
+                  </div>
+
+                  <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.1rem', fontWeight: 600 }}>{r.title}</h4>
+                  <p style={{ color: '#94a3b8', fontSize: '0.825rem', margin: 0, height: '2.4em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {r.description || 'Custom learning roadmap'}
+                  </p>
+
+                  <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1' }}>
+                    <span><i className="fa-solid fa-clock" style={{ marginRight: '4px' }}></i> {r.duration || '12 weeks'}</span>
+                    <span><i className="fa-solid fa-user-gear" style={{ marginRight: '4px' }}></i> {r.target_role || 'Tech'}</span>
+                  </div>
+
+                  {/* Delete button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Delete roadmap "${r.title}"?`)) {
+                        db.deleteRoadmap(r.id).then(() => {
+                          showToast('Roadmap deleted', 'info');
+                          loadData();
+                        });
+                      }
+                    }}
+                    style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                    title="Delete Roadmap"
+                  >
+                    <i className="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Search & Filter Toolbar */}

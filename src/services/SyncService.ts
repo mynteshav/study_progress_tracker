@@ -10,7 +10,7 @@ import {
 import { auth, firestoreDb, onFirebaseAuthStateChanged } from '../utils/firebase';
 import { db } from '../db';
 
-export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'pending';
+export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'pending' | 'error';
 
 export interface SyncStatusState {
   status: SyncStatus;
@@ -36,7 +36,11 @@ const SYNCED_ENTITIES = [
   'flashcard_decks',
   'flashcards',
   'user_stats',
-  'roadmaps'
+  'roadmaps',
+  'roadmap_sections',
+  'roadmap_topics',
+  'roadmap_resources',
+  'roadmap_checklists'
 ];
 
 class SyncServiceManager {
@@ -48,7 +52,8 @@ class SyncServiceManager {
 
   private state: SyncStatusState = {
     status: 'synced',
-    pendingCount: 0
+    pendingCount: 0,
+    lastSyncedAt: typeof localStorage !== 'undefined' ? localStorage.getItem('last_synced_timestamp') || undefined : undefined
   };
 
   private isProcessingQueue = false;
@@ -159,9 +164,14 @@ class SyncServiceManager {
       // 3. Process any pending local changes
       await this.processQueue();
 
+      const now = new Date().toISOString();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('last_synced_timestamp', now);
+      }
+
       this.updateState({
         status: navigator.onLine ? 'synced' : 'offline',
-        lastSyncedAt: new Date().toISOString()
+        lastSyncedAt: now
       });
 
       // Notify UI after initial sync finishes
@@ -172,6 +182,57 @@ class SyncServiceManager {
         status: 'pending',
         errorMessage: err.message || 'Failed to sync with cloud'
       });
+    }
+  }
+
+  /**
+   * Manually trigger a full synchronization cycle across all data.
+   */
+  public async triggerManualSync(): Promise<void> {
+    if (!navigator.onLine) {
+      this.updateState({
+        status: 'offline',
+        errorMessage: 'Offline mode: Changes are safely stored locally.'
+      });
+      throw new Error('Offline mode: Changes are safely stored locally. Try syncing again when online.');
+    }
+
+    const uid = this.getActiveUid();
+    if (!uid) {
+      throw new Error('Unable to sync: User authentication session not active.');
+    }
+
+    this.updateState({ status: 'syncing', errorMessage: undefined });
+
+    try {
+      // 1. Process pending offline queue
+      await this.processQueue();
+
+      // 2. Perform full initial sync (upload local records & download remote updates)
+      await this.performInitialSync(uid);
+
+      // 3. Mark state as synced and update lastSyncedAt timestamp
+      const now = new Date().toISOString();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('last_synced_timestamp', now);
+      }
+
+      this.updateState({
+        status: 'synced',
+        pendingCount: 0,
+        lastSyncedAt: now,
+        errorMessage: undefined
+      });
+
+      // 4. Notify UI that fresh data is available
+      this.notifyDataChange('all');
+    } catch (err: any) {
+      console.error('[SyncService] Manual sync failed:', err);
+      this.updateState({
+        status: 'error',
+        errorMessage: err.message || 'Sync failed. Your changes are safely stored locally.'
+      });
+      throw new Error(err.message || 'Sync failed. Your changes are safely stored locally.');
     }
   }
 
@@ -240,14 +301,34 @@ class SyncServiceManager {
         await db.saveRemoteNote?.(record);
       } else if (entityType === 'habits') {
         await db.saveRemoteHabit?.(record);
+      } else if (entityType === 'habit_logs') {
+        await db.saveRemoteHabitLog?.(record);
       } else if (entityType === 'projects') {
         await db.saveRemoteProject?.(record);
+      } else if (entityType === 'project_tasks') {
+        await db.saveRemoteProjectTask?.(record);
       } else if (entityType === 'dsa_problems') {
         await db.saveRemoteDsaProblem?.(record);
       } else if (entityType === 'timetable_blocks') {
         await db.saveRemoteTimetableBlock?.(record);
       } else if (entityType === 'focus_sessions') {
         await db.saveRemoteFocusSession?.(record);
+      } else if (entityType === 'flashcard_decks') {
+        await db.saveRemoteFlashcardDeck?.(record);
+      } else if (entityType === 'flashcards') {
+        await db.saveRemoteFlashcard?.(record);
+      } else if (entityType === 'user_stats') {
+        await db.saveRemoteUserStats?.(record);
+      } else if (entityType === 'roadmaps') {
+        await db.saveRemoteRoadmap?.(record);
+      } else if (entityType === 'roadmap_sections') {
+        await db.saveRemoteRoadmapSection?.(record);
+      } else if (entityType === 'roadmap_topics') {
+        await db.saveRemoteRoadmapTopic?.(record);
+      } else if (entityType === 'roadmap_resources') {
+        await db.saveRemoteRoadmapResource?.(record);
+      } else if (entityType === 'roadmap_checklists') {
+        await db.saveRemoteRoadmapChecklist?.(record);
       } else {
         await db.genericUpsert?.(entityType, record);
       }

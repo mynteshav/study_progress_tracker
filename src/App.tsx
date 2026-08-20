@@ -45,10 +45,17 @@ function App() {
   const [forceSetup, setForceSetup] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 992);
 
-  const [syncState, setSyncState] = useState<{ status: string; pendingCount: number }>({
+  const [syncState, setSyncState] = useState<{ status: string; pendingCount: number; lastSyncedAt?: string; errorMessage?: string }>({
     status: 'synced',
-    pendingCount: 0
+    pendingCount: 0,
+    lastSyncedAt: typeof localStorage !== 'undefined' ? localStorage.getItem('last_synced_timestamp') || undefined : undefined
   });
+  const [tick, setTick] = useState<number>(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Handle window resize and initial desktop vs mobile state
   useEffect(() => {
@@ -102,7 +109,12 @@ function App() {
         SyncService.init(targetUid);
 
         const unsubStatus = SyncService.subscribeStatus((st) => {
-          setSyncState({ status: st.status, pendingCount: st.pendingCount });
+          setSyncState({
+            status: st.status,
+            pendingCount: st.pendingCount,
+            lastSyncedAt: st.lastSyncedAt,
+            errorMessage: st.errorMessage
+          });
         });
 
         const unsubData = SyncService.subscribeDataChange((entity) => {
@@ -129,6 +141,42 @@ function App() {
       }).catch(() => {});
     }
   }, [user]);
+
+  const formatLastSynced = (isoString?: string): string => {
+    if (!isoString) return 'Never';
+    try {
+      const past = new Date(isoString).getTime();
+      const now = Date.now();
+      const diffSec = Math.floor((now - past) / 1000);
+
+      if (diffSec < 15) return 'Just now';
+      if (diffSec < 60) return `${diffSec}s ago`;
+
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin === 1) return '1 minute ago';
+      if (diffMin < 60) return `${diffMin} minutes ago`;
+
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours === 1) return '1 hour ago';
+      if (diffHours < 24) return `${diffHours} hours ago`;
+
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return '1 day ago';
+      return `${diffDays} days ago`;
+    } catch (e) {
+      return 'Never';
+    }
+  };
+
+  const handleManualSync = async () => {
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      await SyncService.triggerManualSync();
+      showToast('Synchronization completed successfully!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Sync failed. Your changes are safely stored locally.', 'error');
+    }
+  };
 
   const showToast = (message: string, type: ToastMessage['type'] = 'success') => {
     const id = Date.now() + Math.random();
@@ -370,38 +418,69 @@ function App() {
             {/* Install PWA Button */}
             <InstallPWAButton showToast={showToast} />
 
-            {/* Cloud Sync Status Indicator */}
-            <div
-              className={`sync-status-pill sync-${syncState.status}`}
-              title={
-                syncState.status === 'synced'
-                  ? 'All changes synchronized with Cloud'
-                  : syncState.status === 'syncing'
-                  ? 'Synchronizing with Cloud Firestore...'
-                  : syncState.status === 'pending'
-                  ? `${syncState.pendingCount} changes waiting to sync`
-                  : 'Offline mode: Changes saved to local database'
-              }
-            >
-              <i
-                className={`fa-solid ${
-                  syncState.status === 'synced'
-                    ? 'fa-cloud-check'
-                    : syncState.status === 'syncing'
-                    ? 'fa-rotate fa-spin'
+            {/* Manual Sync Button & Status */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+              <button
+                className="btn"
+                disabled={syncState.status === 'syncing'}
+                onClick={handleManualSync}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: syncState.status === 'syncing' ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s ease',
+                  backgroundColor:
+                    syncState.status === 'syncing'
+                      ? '#334155'
+                      : syncState.status === 'error'
+                      ? '#ef4444'
+                      : syncState.status === 'pending'
+                      ? '#f59e0b'
+                      : syncState.status === 'synced'
+                      ? '#10b981'
+                      : '#6366f1',
+                  color: '#ffffff',
+                  border: 'none'
+                }}
+                title={
+                  syncState.status === 'error'
+                    ? syncState.errorMessage || 'Sync failed. Click to retry.'
+                    : 'Click to synchronize all changes'
+                }
+              >
+                <i
+                  className={`fa-solid ${
+                    syncState.status === 'syncing'
+                      ? 'fa-rotate fa-spin'
+                      : syncState.status === 'error'
+                      ? 'fa-circle-xmark'
+                      : syncState.status === 'synced'
+                      ? 'fa-check'
+                      : syncState.status === 'pending'
+                      ? 'fa-cloud-arrow-up'
+                      : 'fa-rotate'
+                  }`}
+                ></i>
+                <span>
+                  {syncState.status === 'syncing'
+                    ? 'Syncing...'
+                    : syncState.status === 'error'
+                    ? 'Sync failed'
+                    : syncState.status === 'synced'
+                    ? 'Synced'
                     : syncState.status === 'pending'
-                    ? 'fa-cloud-arrow-up'
-                    : 'fa-cloud-slash'
-                }`}
-              ></i>
-              <span className="sync-status-text">
-                {syncState.status === 'synced'
-                  ? 'Synced'
-                  : syncState.status === 'syncing'
-                  ? 'Syncing...'
-                  : syncState.status === 'pending'
-                  ? `${syncState.pendingCount} pending`
-                  : 'Offline'}
+                    ? `Sync (${syncState.pendingCount} pending)`
+                    : 'Sync'}
+                </span>
+              </button>
+
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>
+                Last synced: {formatLastSynced(syncState.lastSyncedAt)}
               </span>
             </div>
             <div className="current-date">

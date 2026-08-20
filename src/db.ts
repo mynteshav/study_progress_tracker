@@ -629,6 +629,22 @@ export const db = {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [userId, block.day_of_week, block.start_time, block.end_time, block.subject.trim(), block.color || '#4f46e5', block.recurring ? 1 : 0, block.recurring ? null : block.specific_date || null]
       );
+
+      try {
+        const { SyncService } = await import('./services/SyncService');
+        SyncService.queueChange('timetable_blocks', result.id, 'CREATE', {
+          id: result.id,
+          user_id: userId,
+          day_of_week: block.day_of_week,
+          start_time: block.start_time,
+          end_time: block.end_time,
+          subject: block.subject.trim(),
+          color: block.color || '#4f46e5',
+          recurring: block.recurring ? 1 : 0,
+          specific_date: block.recurring ? null : block.specific_date || null
+        });
+      } catch (e) {}
+
       return { id: result.id, appliedCount: 1, skippedCount: 0 };
     }
   },
@@ -727,7 +743,12 @@ export const db = {
   },
   
   async deleteTimetableBlock(id: number) {
-    return run('DELETE FROM timetable_blocks WHERE id = ?', [id]);
+    const res = await run('DELETE FROM timetable_blocks WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('timetable_blocks', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Habits
@@ -740,25 +761,57 @@ export const db = {
   },
   
   async addHabit(userId: number, name: string, targetDays: string, autoLinked: string, targetValue: number) {
-    return run(
+    const res = await run(
       `INSERT INTO habits (user_id, name, target_days, auto_linked, target_value)
        VALUES (?, ?, ?, ?, ?)`,
       [userId, name.trim(), targetDays, autoLinked, targetValue]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('habits', res.id, 'CREATE', {
+        id: res.id,
+        user_id: userId,
+        name: name.trim(),
+        target_days: targetDays,
+        auto_linked: autoLinked,
+        target_value: targetValue
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async deleteHabit(id: number) {
-    return run('DELETE FROM habits WHERE id = ?', [id]);
+    const res = await run('DELETE FROM habits WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('habits', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
   
   async toggleHabitLog(habitId: number, date: string, completed: boolean) {
     const isCompleted = completed ? 1 : 0;
-    return run(
+    const res = await run(
       `INSERT INTO habit_logs (habit_id, date, completed)
        VALUES (?, ?, ?)
        ON CONFLICT(habit_id, date) DO UPDATE SET completed = excluded.completed`,
       [habitId, date, isCompleted]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      const docId = `${habitId}_${date}`;
+      SyncService.queueChange('habit_logs', docId, 'UPDATE', {
+        id: docId,
+        habit_id: habitId,
+        date,
+        completed: isCompleted
+      });
+    } catch (e) {}
+
+    return res;
   },
 
   // Notes
@@ -777,17 +830,33 @@ export const db = {
   },
   
   async addNote(userId: number, title: string, subject: string, body: string, linkedTopicId?: number | null) {
-    return run(
+    const res = await run(
       `INSERT INTO notes (user_id, title, subject, body, linked_topic_id)
        VALUES (?, ?, ?, ?, ?)`,
       [userId, title.trim(), subject.trim(), body, linkedTopicId || null]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('notes', res.id, 'CREATE', {
+        id: res.id,
+        user_id: userId,
+        title: title.trim(),
+        subject: subject.trim(),
+        body,
+        linked_topic_id: linkedTopicId || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async updateNote(id: number, fields: { title?: string; subject?: string; body?: string; linked_topic_id?: number | null }) {
     const note = await get('SELECT * FROM notes WHERE id = ?', [id]) as any;
     if (!note) throw new Error('Note not found');
-    return run(
+    const res = await run(
       `UPDATE notes SET title = ?, subject = ?, body = ?, linked_topic_id = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
@@ -798,10 +867,23 @@ export const db = {
         id
       ]
     );
+
+    try {
+      const updated = await get('SELECT * FROM notes WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('notes', id, 'UPDATE', updated);
+    } catch (e) {}
+
+    return res;
   },
   
   async deleteNote(id: number) {
-    return run('DELETE FROM notes WHERE id = ?', [id]);
+    const res = await run('DELETE FROM notes WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('notes', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Flashcards & Decks
@@ -810,14 +892,32 @@ export const db = {
   },
   
   async addDeck(userId: number, name: string, subject: string) {
-    return run(
+    const res = await run(
       'INSERT INTO flashcard_decks (user_id, name, subject) VALUES (?, ?, ?)',
       [userId, name.trim(), subject.trim()]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('flashcard_decks', res.id, 'CREATE', {
+        id: res.id,
+        user_id: userId,
+        name: name.trim(),
+        subject: subject.trim(),
+        created_at: new Date().toISOString()
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async deleteDeck(id: number) {
-    return run('DELETE FROM flashcard_decks WHERE id = ?', [id]);
+    const res = await run('DELETE FROM flashcard_decks WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('flashcard_decks', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
   
   async getCards(deckId: number) {
@@ -826,22 +926,51 @@ export const db = {
   
   async addCard(deckId: number, front: string, back: string) {
     const todayStr = new Date().toISOString().split('T')[0];
-    return run(
+    const res = await run(
       `INSERT INTO flashcards (deck_id, front, back, ease_factor, interval_days, next_review_date, review_count)
        VALUES (?, ?, ?, 2.5, 0, ?, 0)`,
       [deckId, front.trim(), back.trim(), todayStr]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('flashcards', res.id, 'CREATE', {
+        id: res.id,
+        deck_id: deckId,
+        front: front.trim(),
+        back: back.trim(),
+        ease_factor: 2.5,
+        interval_days: 0,
+        next_review_date: todayStr,
+        review_count: 0
+      });
+    } catch (e) {}
+
+    return res;
   },
   
   async deleteCard(id: number) {
-    return run('DELETE FROM flashcards WHERE id = ?', [id]);
+    const res = await run('DELETE FROM flashcards WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('flashcards', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
   
   async updateCard(id: number, front: string, back: string) {
-    return run(
+    const res = await run(
       'UPDATE flashcards SET front = ?, back = ? WHERE id = ?',
       [front.trim(), back.trim(), id]
     );
+
+    try {
+      const card = await get('SELECT * FROM flashcards WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('flashcards', id, 'UPDATE', card);
+    } catch (e) {}
+
+    return res;
   },
   
   async getDueCards(deckId: number) {
@@ -1061,18 +1190,35 @@ export const db = {
     const existing = await query('SELECT id FROM roadmaps WHERE user_id = ?', [userId]);
     const isActive = existing.length === 0 ? 1 : 0;
 
-    return run(
+    const res = await run(
       `INSERT INTO roadmaps (user_id, title, description, target_role, difficulty, duration, is_active)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [userId, title.trim(), description.trim(), targetRole.trim(), difficulty, duration, isActive]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmaps', res.id, 'CREATE', {
+        id: res.id,
+        user_id: userId,
+        title: title.trim(),
+        description: description.trim(),
+        target_role: targetRole.trim(),
+        status: 'active',
+        difficulty,
+        duration,
+        is_active: isActive
+      });
+    } catch (e) {}
+
+    return res;
   },
 
   async updateRoadmap(id: number, fields: { title?: string; description?: string; target_role?: string; status?: string; difficulty?: string; duration?: string }) {
     const r = await get('SELECT * FROM roadmaps WHERE id = ?', [id]) as any;
     if (!r) throw new Error('Roadmap not found');
 
-    return run(
+    const res = await run(
       `UPDATE roadmaps SET title = ?, description = ?, target_role = ?, status = ?, difficulty = ?, duration = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [
         fields.title !== undefined ? fields.title.trim() : r.title,
@@ -1084,10 +1230,23 @@ export const db = {
         id
       ]
     );
+
+    try {
+      const updated = await get('SELECT * FROM roadmaps WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmaps', id, 'UPDATE', updated);
+    } catch (e) {}
+
+    return res;
   },
 
   async deleteRoadmap(id: number) {
-    return run('DELETE FROM roadmaps WHERE id = ?', [id]);
+    const res = await run('DELETE FROM roadmaps WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmaps', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Roadmap Sections
@@ -1104,18 +1263,41 @@ export const db = {
       const maxObj = await get('SELECT MAX(order_index) as max_val FROM roadmap_sections WHERE roadmap_id = ?', [roadmapId]) as any;
       order = (maxObj && maxObj.max_val !== null) ? maxObj.max_val + 1 : 0;
     }
-    return run(
+    const res = await run(
       'INSERT INTO roadmap_sections (roadmap_id, title, order_index) VALUES (?, ?, ?)',
       [roadmapId, title.trim(), order]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_sections', res.id, 'CREATE', {
+        id: res.id,
+        roadmap_id: roadmapId,
+        title: title.trim(),
+        order_index: order
+      });
+    } catch (e) {}
+
+    return res;
   },
 
   async updateRoadmapSection(id: number, title: string) {
-    return run('UPDATE roadmap_sections SET title = ? WHERE id = ?', [title.trim(), id]);
+    const res = await run('UPDATE roadmap_sections SET title = ? WHERE id = ?', [title.trim(), id]);
+    try {
+      const sec = await get('SELECT * FROM roadmap_sections WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_sections', id, 'UPDATE', sec);
+    } catch (e) {}
+    return res;
   },
 
   async deleteRoadmapSection(id: number) {
-    return run('DELETE FROM roadmap_sections WHERE id = ?', [id]);
+    const res = await run('DELETE FROM roadmap_sections WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_sections', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Roadmap Topics
@@ -1149,11 +1331,30 @@ export const db = {
     const maxObj = await get('SELECT MAX(order_index) as max_val FROM roadmap_topics WHERE section_id = ?', [sectionId]) as any;
     const nextOrder = (maxObj && maxObj.max_val !== null) ? maxObj.max_val + 1 : 0;
 
-    return run(
+    const res = await run(
       `INSERT INTO roadmap_topics (section_id, roadmap_id, name, description, status, difficulty, priority, estimated_hours, order_index)
        VALUES (?, ?, ?, ?, 'not started', ?, ?, ?, ?)`,
       [sectionId, roadmapId, name.trim(), description.trim(), difficulty, priority, estimatedHours, nextOrder]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_topics', res.id, 'CREATE', {
+        id: res.id,
+        section_id: sectionId,
+        roadmap_id: roadmapId,
+        name: name.trim(),
+        description: description.trim(),
+        status: 'not started',
+        difficulty,
+        priority,
+        estimated_hours: estimatedHours,
+        completed_hours: 0,
+        order_index: nextOrder
+      });
+    } catch (e) {}
+
+    return res;
   },
 
   async updateRoadmapTopic(
@@ -1214,6 +1415,13 @@ export const db = {
     );
 
     await run('UPDATE roadmaps SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [topic.roadmap_id]);
+
+    try {
+      const updated = await get('SELECT * FROM roadmap_topics WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_topics', id, 'UPDATE', updated);
+    } catch (e) {}
+
     return res;
   },
 
@@ -1231,10 +1439,21 @@ export const db = {
       [newCompletedHours, newStatus, id]
     );
     await run('UPDATE roadmaps SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [topic.roadmap_id]);
+
+    try {
+      const updated = await get('SELECT * FROM roadmap_topics WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_topics', id, 'UPDATE', updated);
+    } catch (e) {}
   },
 
   async deleteRoadmapTopic(id: number) {
-    return run('DELETE FROM roadmap_topics WHERE id = ?', [id]);
+    const res = await run('DELETE FROM roadmap_topics WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_topics', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Roadmap Topic Resources
@@ -1246,17 +1465,32 @@ export const db = {
   },
 
   async addTopicResource(topicId: number, title: string, url: string, type: string, duration: string = '') {
-    return run(
+    const res = await run(
       'INSERT INTO roadmap_resources (topic_id, title, url, type, duration) VALUES (?, ?, ?, ?, ?)',
       [topicId, title.trim(), url.trim(), type, duration.trim()]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_resources', res.id, 'CREATE', {
+        id: res.id,
+        topic_id: topicId,
+        title: title.trim(),
+        url: url.trim(),
+        type,
+        duration: duration.trim(),
+        completed: 0
+      });
+    } catch (e) {}
+
+    return res;
   },
 
   async updateTopicResource(id: number, fields: { title?: string; url?: string; type?: string; duration?: string; completed?: number }) {
     const r = await get('SELECT * FROM roadmap_resources WHERE id = ?', [id]) as any;
     if (!r) throw new Error('Resource not found');
 
-    return run(
+    const res = await run(
       'UPDATE roadmap_resources SET title = ?, url = ?, type = ?, duration = ?, completed = ? WHERE id = ?',
       [
         fields.title !== undefined ? fields.title.trim() : r.title,
@@ -1267,10 +1501,23 @@ export const db = {
         id
       ]
     );
+
+    try {
+      const updated = await get('SELECT * FROM roadmap_resources WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_resources', id, 'UPDATE', updated);
+    } catch (e) {}
+
+    return res;
   },
 
   async deleteTopicResource(id: number) {
-    return run('DELETE FROM roadmap_resources WHERE id = ?', [id]);
+    const res = await run('DELETE FROM roadmap_resources WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_resources', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Roadmap Topic Checklists
@@ -1285,18 +1532,42 @@ export const db = {
     const maxObj = await get('SELECT MAX(order_index) as max_val FROM roadmap_checklists WHERE topic_id = ?', [topicId]) as any;
     const nextOrder = (maxObj && maxObj.max_val !== null) ? maxObj.max_val + 1 : 0;
 
-    return run(
+    const res = await run(
       'INSERT INTO roadmap_checklists (topic_id, title, order_index) VALUES (?, ?, ?)',
       [topicId, title.trim(), nextOrder]
     );
+
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_checklists', res.id, 'CREATE', {
+        id: res.id,
+        topic_id: topicId,
+        title: title.trim(),
+        completed: 0,
+        order_index: nextOrder
+      });
+    } catch (e) {}
+
+    return res;
   },
 
   async toggleTopicChecklist(id: number, completed: boolean) {
-    return run('UPDATE roadmap_checklists SET completed = ? WHERE id = ?', [completed ? 1 : 0, id]);
+    const res = await run('UPDATE roadmap_checklists SET completed = ? WHERE id = ?', [completed ? 1 : 0, id]);
+    try {
+      const chk = await get('SELECT * FROM roadmap_checklists WHERE id = ?', [id]) as any;
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_checklists', id, 'UPDATE', chk);
+    } catch (e) {}
+    return res;
   },
 
   async deleteTopicChecklist(id: number) {
-    return run('DELETE FROM roadmap_checklists WHERE id = ?', [id]);
+    const res = await run('DELETE FROM roadmap_checklists WHERE id = ?', [id]);
+    try {
+      const { SyncService } = await import('./services/SyncService');
+      SyncService.queueChange('roadmap_checklists', id, 'DELETE', { id });
+    } catch (e) {}
+    return res;
   },
 
   // Revisions
@@ -1420,8 +1691,61 @@ export const db = {
 
   async getAllRecordsForSync(tableName: string, userId: number) {
     try {
-      return await query(`SELECT * FROM ${tableName} WHERE user_id = ?`, [userId]);
+      if (tableName === 'roadmaps') {
+        return await query(`SELECT * FROM roadmaps WHERE user_id = ?`, [userId]);
+      } else if (tableName === 'roadmap_sections') {
+        const userRoadmaps = await query(`SELECT id FROM roadmaps WHERE user_id = ?`, [userId]);
+        const rIds = userRoadmaps.map((r: any) => r.id);
+        if (rIds.length === 0) return [];
+        const allSections = await query(`SELECT * FROM roadmap_sections`, []);
+        return allSections.filter((s: any) => rIds.includes(s.roadmap_id));
+      } else if (tableName === 'roadmap_topics') {
+        const userRoadmaps = await query(`SELECT id FROM roadmaps WHERE user_id = ?`, [userId]);
+        const rIds = userRoadmaps.map((r: any) => r.id);
+        if (rIds.length === 0) return [];
+        const allTopics = await query(`SELECT * FROM roadmap_topics`, []);
+        return allTopics.filter((t: any) => rIds.includes(t.roadmap_id));
+      } else if (tableName === 'roadmap_resources') {
+        const userRoadmaps = await query(`SELECT id FROM roadmaps WHERE user_id = ?`, [userId]);
+        const rIds = userRoadmaps.map((r: any) => r.id);
+        if (rIds.length === 0) return [];
+        const allTopics = await query(`SELECT * FROM roadmap_topics`, []);
+        const tIds = allTopics.filter((t: any) => rIds.includes(t.roadmap_id)).map((t: any) => t.id);
+        if (tIds.length === 0) return [];
+        const allRes = await query(`SELECT * FROM roadmap_resources`, []);
+        return allRes.filter((res: any) => tIds.includes(res.topic_id));
+      } else if (tableName === 'roadmap_checklists') {
+        const userRoadmaps = await query(`SELECT id FROM roadmaps WHERE user_id = ?`, [userId]);
+        const rIds = userRoadmaps.map((r: any) => r.id);
+        if (rIds.length === 0) return [];
+        const allTopics = await query(`SELECT * FROM roadmap_topics`, []);
+        const tIds = allTopics.filter((t: any) => rIds.includes(t.roadmap_id)).map((t: any) => t.id);
+        if (tIds.length === 0) return [];
+        const allChk = await query(`SELECT * FROM roadmap_checklists`, []);
+        return allChk.filter((c: any) => tIds.includes(c.topic_id));
+      } else if (tableName === 'project_tasks') {
+        const projects = await query(`SELECT id FROM projects WHERE user_id = ?`, [userId]);
+        const pIds = projects.map((p: any) => p.id);
+        if (pIds.length === 0) return [];
+        const allTasks = await query(`SELECT * FROM project_tasks`, []);
+        return allTasks.filter((pt: any) => pIds.includes(pt.project_id));
+      } else if (tableName === 'habit_logs') {
+        const habits = await query(`SELECT id FROM habits WHERE user_id = ?`, [userId]);
+        const hIds = habits.map((h: any) => h.id);
+        if (hIds.length === 0) return [];
+        const allLogs = await query(`SELECT * FROM habit_logs`, []);
+        return allLogs.filter((l: any) => hIds.includes(l.habit_id));
+      } else if (tableName === 'flashcards') {
+        const decks = await query(`SELECT id FROM flashcard_decks WHERE user_id = ?`, [userId]);
+        const dIds = decks.map((d: any) => d.id);
+        if (dIds.length === 0) return [];
+        const allCards = await query(`SELECT * FROM flashcards`, []);
+        return allCards.filter((c: any) => dIds.includes(c.deck_id));
+      } else {
+        return await query(`SELECT * FROM ${tableName} WHERE user_id = ?`, [userId]);
+      }
     } catch (e) {
+      console.error(`getAllRecordsForSync error for ${tableName}:`, e);
       return [];
     }
   },
@@ -1487,6 +1811,16 @@ export const db = {
     );
   },
 
+  async saveRemoteHabitLog(log: any) {
+    if (!log || !log.habit_id || !log.date) return;
+    return run(
+      `INSERT INTO habit_logs (habit_id, date, completed)
+       VALUES (?, ?, ?)
+       ON CONFLICT(habit_id, date) DO UPDATE SET completed = excluded.completed`,
+      [log.habit_id || log.habitId, log.date, log.completed ? 1 : 0]
+    );
+  },
+
   async saveRemoteProject(project: any) {
     if (!project || !project.id) return;
     return run(
@@ -1496,6 +1830,17 @@ export const db = {
          user_id = excluded.user_id, name = excluded.name, description = excluded.description,
          status = excluded.status, start_date = excluded.start_date, target_date = excluded.target_date`,
       [project.id, project.user_id, project.name, project.description, project.status, project.start_date, project.target_date]
+    );
+  },
+
+  async saveRemoteProjectTask(task: any) {
+    if (!task || !task.id) return;
+    return run(
+      `INSERT INTO project_tasks (id, project_id, title, done, due_date)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         project_id = excluded.project_id, title = excluded.title, done = excluded.done, due_date = excluded.due_date`,
+      [task.id, task.project_id || task.projectId, (task.title || '').trim(), task.done ? 1 : 0, task.due_date || task.dueDate || null]
     );
   },
 
@@ -1532,6 +1877,168 @@ export const db = {
        ON CONFLICT(id) DO UPDATE SET
          user_id = excluded.user_id, subject = excluded.subject, duration_minutes = excluded.duration_minutes, note = excluded.note`,
       [session.id, session.user_id, session.topic_id || null, session.subject, session.start_time, session.end_time, session.duration_minutes, session.type, session.note, session.scheduled_duration || 0, session.actual_duration || 0, session.saved_time || 0, session.save_time_used || 0, session.task_name || '']
+    );
+  },
+
+  async saveRemoteFlashcardDeck(deck: any) {
+    if (!deck || !deck.id) return;
+    return run(
+      `INSERT INTO flashcard_decks (id, user_id, name, subject, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         user_id = excluded.user_id, name = excluded.name, subject = excluded.subject`,
+      [deck.id, deck.user_id || 1, (deck.name || '').trim(), (deck.subject || '').trim(), deck.created_at || new Date().toISOString()]
+    );
+  },
+
+  async saveRemoteFlashcard(card: any) {
+    if (!card || !card.id) return;
+    return run(
+      `INSERT INTO flashcards (id, deck_id, front, back, ease_factor, interval_days, next_review_date, review_count, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         deck_id = excluded.deck_id, front = excluded.front, back = excluded.back, ease_factor = excluded.ease_factor,
+         interval_days = excluded.interval_days, next_review_date = excluded.next_review_date, review_count = excluded.review_count`,
+      [
+        card.id,
+        card.deck_id || card.deckId,
+        (card.front || '').trim(),
+        (card.back || '').trim(),
+        card.ease_factor !== undefined ? card.ease_factor : 2.5,
+        card.interval_days !== undefined ? card.interval_days : 0,
+        card.next_review_date || new Date().toISOString().split('T')[0],
+        card.review_count !== undefined ? card.review_count : 0,
+        card.created_at || new Date().toISOString()
+      ]
+    );
+  },
+
+  async saveRemoteUserStats(stats: any) {
+    if (!stats || (!stats.user_id && !stats.userId)) return;
+    const uid = stats.user_id || stats.userId;
+    return run(
+      `INSERT INTO user_stats (user_id, total_saved_time, available_saved_time, weekly_saved_time, monthly_saved_time)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         total_saved_time = excluded.total_saved_time, available_saved_time = excluded.available_saved_time,
+         weekly_saved_time = excluded.weekly_saved_time, monthly_saved_time = excluded.monthly_saved_time`,
+      [uid, stats.total_saved_time || 0, stats.available_saved_time || 0, stats.weekly_saved_time || 0, stats.monthly_saved_time || 0]
+    );
+  },
+
+  async saveRemoteRoadmap(r: any) {
+    if (!r || !r.id) return;
+    return run(
+      `INSERT INTO roadmaps (id, user_id, title, description, target_role, status, difficulty, duration, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         user_id = excluded.user_id, title = excluded.title, description = excluded.description,
+         target_role = excluded.target_role, status = excluded.status, difficulty = excluded.difficulty,
+         duration = excluded.duration, is_active = excluded.is_active, updated_at = excluded.updated_at`,
+      [
+        r.id,
+        r.user_id || 1,
+        (r.title || '').trim(),
+        (r.description || '').trim(),
+        (r.target_role || r.targetRole || '').trim(),
+        r.status || 'active',
+        r.difficulty || 'Intermediate',
+        r.duration || '12 weeks',
+        r.is_active !== undefined ? r.is_active : (r.isActive ? 1 : 0),
+        r.created_at || new Date().toISOString(),
+        r.updated_at || new Date().toISOString()
+      ]
+    );
+  },
+
+  async saveRemoteRoadmapSection(sec: any) {
+    if (!sec || !sec.id) return;
+    return run(
+      `INSERT INTO roadmap_sections (id, roadmap_id, title, order_index, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         roadmap_id = excluded.roadmap_id, title = excluded.title, order_index = excluded.order_index`,
+      [
+        sec.id,
+        sec.roadmap_id || sec.roadmapId,
+        (sec.title || '').trim(),
+        sec.order_index !== undefined ? sec.order_index : (sec.orderIndex || 0),
+        sec.created_at || new Date().toISOString()
+      ]
+    );
+  },
+
+  async saveRemoteRoadmapTopic(t: any) {
+    if (!t || !t.id) return;
+    return run(
+      `INSERT INTO roadmap_topics (id, section_id, roadmap_id, name, description, status, difficulty, priority, estimated_hours, completed_hours, completion_date, notes, linked_project_id, linked_note_id, next_revision_date, revision_count, order_index, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         section_id = excluded.section_id, roadmap_id = excluded.roadmap_id, name = excluded.name,
+         description = excluded.description, status = excluded.status, difficulty = excluded.difficulty,
+         priority = excluded.priority, estimated_hours = excluded.estimated_hours, completed_hours = excluded.completed_hours,
+         completion_date = excluded.completion_date, notes = excluded.notes, linked_project_id = excluded.linked_project_id,
+         linked_note_id = excluded.linked_note_id, next_revision_date = excluded.next_revision_date,
+         revision_count = excluded.revision_count, order_index = excluded.order_index`,
+      [
+        t.id,
+        t.section_id || t.sectionId,
+        t.roadmap_id || t.roadmapId,
+        (t.name || t.title || '').trim(),
+        (t.description || '').trim(),
+        t.status || 'not started',
+        t.difficulty || 'Intermediate',
+        t.priority || 'medium',
+        t.estimated_hours !== undefined ? t.estimated_hours : (t.estimatedHours || 0),
+        t.completed_hours !== undefined ? t.completed_hours : (t.completedHours || 0),
+        t.completion_date || t.completionDate || null,
+        t.notes || null,
+        t.linked_project_id || t.linkedProjectId || null,
+        t.linked_note_id || t.linkedNoteId || null,
+        t.next_revision_date || t.nextRevisionDate || null,
+        t.revision_count !== undefined ? t.revision_count : (t.revisionCount || 0),
+        t.order_index !== undefined ? t.order_index : (t.orderIndex || 0),
+        t.created_at || new Date().toISOString()
+      ]
+    );
+  },
+
+  async saveRemoteRoadmapResource(res: any) {
+    if (!res || !res.id) return;
+    return run(
+      `INSERT INTO roadmap_resources (id, topic_id, title, url, type, duration, completed, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         topic_id = excluded.topic_id, title = excluded.title, url = excluded.url,
+         type = excluded.type, duration = excluded.duration, completed = excluded.completed`,
+      [
+        res.id,
+        res.topic_id || res.topicId,
+        (res.title || '').trim(),
+        (res.url || '').trim(),
+        res.type || 'Documentation',
+        (res.duration || '').trim(),
+        res.completed !== undefined ? (res.completed ? 1 : 0) : 0,
+        res.created_at || new Date().toISOString()
+      ]
+    );
+  },
+
+  async saveRemoteRoadmapChecklist(c: any) {
+    if (!c || !c.id) return;
+    return run(
+      `INSERT INTO roadmap_checklists (id, topic_id, title, completed, order_index, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         topic_id = excluded.topic_id, title = excluded.title, completed = excluded.completed, order_index = excluded.order_index`,
+      [
+        c.id,
+        c.topic_id || c.topicId,
+        (c.title || '').trim(),
+        c.completed !== undefined ? (c.completed ? 1 : 0) : 0,
+        c.order_index !== undefined ? c.order_index : (c.orderIndex || 0),
+        c.created_at || new Date().toISOString()
+      ]
     );
   }
 };
