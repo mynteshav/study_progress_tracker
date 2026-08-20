@@ -80,7 +80,7 @@ function substituteParams(sqlClause: string, params: any[]): string {
 
 // SQL Helper methods for string & date functions in queries
 function evaluateExpr(row: any, exprStr: string): any {
-  let expr = exprStr.trim();
+  let expr = exprStr.replace(/^\(+/, '').replace(/\)+$/, '').trim();
   if (expr.toLowerCase().startsWith('substr(')) {
     const match = expr.match(/substr\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
     if (match) {
@@ -102,7 +102,7 @@ function evaluateExpr(row: any, exprStr: string): any {
 }
 
 function matchesCondition(row: any, condStr: string): boolean {
-  let cond = condStr.trim();
+  let cond = condStr.replace(/^\(+/, '').replace(/\)+$/, '').trim();
   if (!cond) return true;
 
   if (cond.toUpperCase().includes(' AND ')) {

@@ -1158,10 +1158,11 @@ export const db = {
 
   // Roadmap Module API Methods
   async getRoadmaps(userId: number) {
-    return query(
-      'SELECT * FROM roadmaps WHERE user_id = ? AND (is_custom IS NULL OR is_custom = 1) ORDER BY is_active DESC, updated_at DESC',
+    const all = await query(
+      'SELECT * FROM roadmaps WHERE user_id = ? ORDER BY is_active DESC, updated_at DESC',
       [userId]
     );
+    return (all || []).filter((r: any) => r.is_custom !== 0 && r.is_custom !== '0');
   },
 
   async getRoadmapById(id: number) {
@@ -1169,9 +1170,10 @@ export const db = {
   },
 
   async getActiveRoadmap(userId: number) {
-    const active = await get('SELECT * FROM roadmaps WHERE user_id = ? AND is_active = 1 AND (is_custom IS NULL OR is_custom = 1) LIMIT 1', [userId]);
-    if (active) return active;
-    return get('SELECT * FROM roadmaps WHERE user_id = ? AND (is_custom IS NULL OR is_custom = 1) ORDER BY updated_at DESC LIMIT 1', [userId]);
+    const all = await this.getRoadmaps(userId);
+    if (all.length === 0) return null;
+    const active = all.find((r: any) => r.is_active === 1);
+    return active || all[0] || null;
   },
 
   async setActiveRoadmap(userId: number, roadmapId: number) {
@@ -1187,7 +1189,7 @@ export const db = {
     difficulty: string = 'Intermediate',
     duration: string = '12 weeks'
   ) {
-    const existing = await query('SELECT id FROM roadmaps WHERE user_id = ? AND (is_custom IS NULL OR is_custom = 1)', [userId]);
+    const existing = await this.getRoadmaps(userId);
     const isActive = existing.length === 0 ? 1 : 0;
 
     const res = await run(
